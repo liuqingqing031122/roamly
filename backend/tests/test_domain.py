@@ -52,6 +52,18 @@ def test_claim_accepts_supported_types(claim_type: str) -> None:
     assert claim.claim_type == claim_type
 
 
+def test_claim_scope_defaults_to_none() -> None:
+    claim = make_claim()
+
+    assert claim.scope is None
+
+
+def test_claim_accepts_scope() -> None:
+    claim = make_claim(scope="except public holidays")
+
+    assert claim.scope == "except public holidays"
+
+
 def test_evidence_parses_url() -> None:
     evidence = make_evidence()
 
@@ -166,8 +178,9 @@ def test_verification_result_requires_field(field: str) -> None:
 # JSON serialization
 
 
-def test_claim_json_round_trip() -> None:
-    claim = make_claim()
+@pytest.mark.parametrize("scope", [None, "in summer"])
+def test_claim_json_round_trip(scope: str | None) -> None:
+    claim = make_claim(scope=scope)
 
     assert Claim.model_validate_json(claim.model_dump_json()) == claim
 

@@ -18,6 +18,8 @@ class Claim(BaseModel):
     claim_type: ClaimType
     original_excerpt: str
     normalized_statement: str
+    # Temporal or applicability qualifier stated in the source, e.g. "in summer".
+    scope: str | None = None
 
 
 class Evidence(BaseModel):
