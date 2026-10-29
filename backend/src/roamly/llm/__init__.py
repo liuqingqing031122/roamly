@@ -6,6 +6,23 @@ from typing import Protocol
 from pydantic import BaseModel
 
 
+class LLMError(Exception):
+    """Base class for failed LLM calls."""
+
+
+class LLMAPIError(LLMError):
+    """The request did not succeed: network failure, timeout, or HTTP error status."""
+
+    def __init__(self, message: str, status_code: int | None = None) -> None:
+        super().__init__(message)
+        self.status_code = status_code
+
+
+class LLMResponseError(LLMError):
+    """The response was received but is unusable: empty, truncated, invalid JSON,
+    or not matching the requested schema."""
+
+
 @dataclass(frozen=True)
 class TokenUsage:
     """Token counts reported for one LLM call."""
@@ -25,7 +42,8 @@ class StructuredResponse[T: BaseModel]:
 class LLMClient(Protocol):
     """Anything that can answer a prompt with an instance of a Pydantic model.
 
-    Implementations must return output validated against `response_model`.
+    Implementations must return output validated against `response_model`, and
+    raise `LLMError` instead of returning partial or empty output on failure.
     Untrusted content belongs in `user_prompt`, never in `system_prompt`.
     """
 
