@@ -53,7 +53,7 @@ Milestones M1–M6 correspond to items 1–6 of the requirements delivery plan (
 - **M1.3 Real provider and CLI (~6 h)**
   - Versioned extraction prompt.
   - DeepSeek adapter configured via environment variables; verify its structured-output capabilities before relying on them.
-  - `CachedLLMClient` for on-disk response caching.
+  - `ExtractionCache` for on-disk caching of validated `ExtractedClaims`; post-processing re-runs on every cache hit (see architecture decision D-008).
   - CLI that reads a text file and prints an `ExtractionResult` as JSON.
 - **M1.4 Small extraction evaluation (~5 h)**
   - About 15 manually labelled extraction cases.

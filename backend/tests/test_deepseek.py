@@ -116,6 +116,24 @@ def test_request_carries_prompts_schema_and_settings() -> None:
     assert user == {"role": "user", "content": "<travel_guide>The museum is open.</travel_guide>"}
 
 
+def test_settings_match_request_options() -> None:
+    requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(200, json=completion(json.dumps(VALID_OUTPUT)))
+
+    client = DeepSeekClient(API_KEY, max_tokens=2048, transport=httpx.MockTransport(handler))
+
+    call(client)
+
+    payload = json.loads(requests[0].content)
+    del payload["messages"]
+    assert client.settings == {"provider": "deepseek", **payload}
+    assert client.settings["max_tokens"] == 2048
+    assert API_KEY not in json.dumps(client.settings)
+
+
 # Unusable responses
 
 

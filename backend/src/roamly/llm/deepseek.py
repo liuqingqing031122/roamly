@@ -52,20 +52,20 @@ class DeepSeekClient:
             raise ValueError(f"Environment variable {API_KEY_ENV} is not set")
         return cls(api_key, os.environ.get(MODEL_ENV) or DEFAULT_MODEL, **kwargs)
 
+    @property
+    def settings(self) -> dict[str, Any]:
+        """Provider and request options that affect model output, e.g. for cache keys."""
+        return {"provider": "deepseek", **self._request_options()}
+
     def complete_structured[T: BaseModel](
         self, *, system_prompt: str, user_prompt: str, response_model: type[T]
     ) -> StructuredResponse[T]:
         payload = {
-            "model": self.model,
+            **self._request_options(),
             "messages": [
                 {"role": "system", "content": _with_schema(system_prompt, response_model)},
                 {"role": "user", "content": user_prompt},
             ],
-            "response_format": {"type": "json_object"},
-            # Thinking mode is on by default and ignores temperature; extraction does not need it.
-            "thinking": {"type": "disabled"},
-            "temperature": 0,
-            "max_tokens": self.max_tokens,
         }
         body = self._post(payload)
         content = _message_content(body)
@@ -82,6 +82,16 @@ class DeepSeekClient:
             ) from exc
 
         return StructuredResponse(output=output, usage=_token_usage(body))
+
+    def _request_options(self) -> dict[str, Any]:
+        return {
+            "model": self.model,
+            "response_format": {"type": "json_object"},
+            # Thinking mode is on by default and ignores temperature; extraction does not need it.
+            "thinking": {"type": "disabled"},
+            "temperature": 0,
+            "max_tokens": self.max_tokens,
+        }
 
     def _post(self, payload: dict[str, Any]) -> dict[str, Any]:
         try:

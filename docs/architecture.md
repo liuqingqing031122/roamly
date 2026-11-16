@@ -33,7 +33,7 @@ The user review step is a natural pause between HTTP requests; state is persiste
 | Data models | Pydantic v2 | Implemented | One model definition for API schemas, LLM output validation, and domain objects |
 | Testing | pytest | Implemented | Standard, simple fixtures and parametrisation |
 | Lint / format | ruff | Implemented | Single fast tool for linting, import sorting, and formatting |
-| LLM | DeepSeek initially, behind `LLMClient` | Planned (M1) | See §7 and decision D-006 |
+| LLM | DeepSeek initially, behind `LLMClient`; called with httpx (no SDK) | Implemented (M1.3) | See §7 and decision D-006 |
 | Persistence | SQLite | Planned (M2+) | Zero-ops; sufficient for traceability requirements |
 | HTML fetch / extraction | httpx, trafilatura | Planned (M5) | Timeouts, streaming size limits, manual redirect handling for SSRF safety |
 | Place lookup | OpenStreetMap Nominatim (fixtures first) | Planned (M2) | Free; paid alternatives remain an option |
@@ -48,19 +48,23 @@ Current (**Implemented**):
 backend/
   pyproject.toml, uv.lock, .python-version
   src/roamly/
-    main.py        # FastAPI app; GET /health
-    domain.py      # Core domain models
-  tests/
-    test_health.py
-    test_domain.py
+    main.py               # FastAPI app; GET /health
+    domain.py             # Core domain models
+    extraction.py         # Extraction schemas and deterministic post-processing
+    extraction_prompt.py  # Versioned extraction prompt
+    extraction_cache.py   # On-disk cache of validated extraction output
+    pipeline.py           # Orchestration: prompt → LLM or cache → post-processing
+    cli.py                # `roamly-extract` command
+    llm/
+      __init__.py         # LLMClient protocol, errors, FakeLLMClient
+      deepseek.py         # DeepSeek adapter
+  tests/                  # One test module per source module
 ```
 
 Planned additions, introduced only when a milestone needs them:
 
 ```
   src/roamly/
-    extraction.py  # M1: LLM extraction schemas and deterministic post-processing
-    llm/           # M1: LLMClient protocol, Fake/Cached clients, provider adapters
     places/        # M2: place resolution and ambiguity detection
     selection.py   # M2: deterministic claim preselection
     retrieval/     # M3: evidence providers, chunking, ranking
@@ -76,11 +80,11 @@ eval/              # M1+: labelled datasets and metric scripts
 
 ### Implemented (`backend/src/roamly/domain.py`)
 
-- **Claim:** `id`, `place_name`, `claim_type` (`opening_hours` | `reservation` | `closure`), `original_excerpt`, `normalized_statement`.
+- **Claim:** `id`, `place_name`, `claim_type` (`opening_hours` | `reservation` | `closure`), `original_excerpt`, `normalized_statement`, `scope`.
 - **Evidence:** `id`, `claim_id`, `source_url` (`HttpUrl`), `source_title`, `content_excerpt`, `retrieved_at`.
 - **VerificationResult:** `claim_id`, `verdict` (`Supported` | `Contradicted` | `Potentially Outdated` | `Unable to Verify`), `explanation`, `evidence_ids`. A validator requires at least one evidence ID for `Supported` and `Contradicted` (NFR-01).
 
-### Planned for M1
+### Implemented in M1 (`backend/src/roamly/extraction.py`)
 
 - **Claim.scope:** `str | None = None`. Holds only temporal or applicability qualifiers explicitly stated in the source (e.g. "in summer", "except public holidays"). Dates are never inferred; parsing is deferred to verification (M4).
 - **ExtractedClaim** (in `extraction.py`): the untrusted LLM output schema.
@@ -112,16 +116,32 @@ eval/              # M1+: labelled datasets and metric scripts
 
 A typical run with three claims needs about five LLM calls: one or two for extraction and up to three for verification.
 
-## 7. LLM integration (Planned, M1)
+## 7. LLM integration (Implemented, M1)
 
-- **Abstraction.** A small `LLMClient` protocol with one structured-output method: given a prompt and a Pydantic schema, return a validated instance plus token usage. Pipeline code depends only on this protocol and must contain no provider-specific behaviour.
+- **Abstraction.** A small `LLMClient` protocol with one structured-output method: given a system prompt, a user prompt, and a Pydantic schema, return a validated instance plus token usage. Failures raise `LLMError` subclasses (`LLMAPIError` for network, timeout, and HTTP errors; `LLMResponseError` for empty, truncated, invalid, or schema-mismatched output) instead of returning empty results. Pipeline code depends only on this protocol and contains no provider-specific behaviour.
 - **Implementations.**
-  - `FakeLLMClient` — returns predefined outputs; used by all unit and contract tests.
-  - `CachedLLMClient` — wraps any client and caches responses on disk, keyed by model, prompt version, and input hash, so repeated development and evaluation runs cost nothing.
-  - Provider adapter — **DeepSeek** is the initial provider for local development and the M1 extraction evaluation. It is not a permanent dependency; OpenAI or Anthropic may be used for deployment or provider comparison.
-- **Configuration.** Provider, model, and API key come from environment variables (e.g. `ROAMLY_LLM_PROVIDER`, `ROAMLY_LLM_MODEL`, `ROAMLY_LLM_API_KEY`; final names are fixed in M1.3). API keys and `.env` files are never committed; `.gitignore` already excludes `.env` and `.env.*`.
-- **Structured output.** DeepSeek's actual structured-output capabilities (JSON mode versus schema-constrained output) must be verified during M1.3 rather than assumed. Regardless of provider support, every response is validated against the Pydantic schema, and invalid responses are handled explicitly rather than silently accepted.
-- **Prompt versioning.** Each prompt has a version constant recorded alongside results and used in cache keys.
+  - `FakeLLMClient` — returns predefined outputs and records calls; used by unit and contract tests.
+  - `DeepSeekClient` — the initial provider for local development and the M1 extraction evaluation. It is not a permanent dependency; OpenAI or Anthropic may be used for deployment or provider comparison.
+- **Configuration.** `ROAMLY_LLM_PROVIDER` (only `deepseek` is supported; the default), `ROAMLY_LLM_MODEL` (default `deepseek-flash`), and `ROAMLY_LLM_API_KEY`. API keys and `.env` files are never committed and never appear in error messages or cache entries.
+- **Structured output.** DeepSeek offers JSON mode (`response_format: json_object`), which guarantees syntactically valid JSON but not schema conformance, and may occasionally return empty content. The adapter therefore appends the response model's JSON Schema to the system prompt, disables thinking mode, and validates every response with Pydantic. Real-API behaviour still needs to be confirmed by a manual smoke test.
+- **Prompt versioning.** Each prompt has a version constant (`extraction-v1`) that is part of the cache key.
+- **Input limit.** The CLI rejects guide text longer than 30,000 characters before any LLM call or cache access, bounding the cost of a single run.
+
+### Extraction caching (Implemented, M1.3)
+
+Caching lives at the extraction layer (`ExtractionCache` in `extraction_cache.py`), not in a generic `CachedLLMClient` wrapper as originally planned (decision D-008). A generic wrapper sees only prompts and a response type; the extraction layer knows the prompt version and response schema and can make them explicit parts of the key.
+
+- **What is cached.** The Pydantic-validated `ExtractedClaims` returned by the LLM, not the final `ExtractionResult`. The LLM output is the expensive, non-deterministic part; post-processing is cheap and deterministic. Caching the raw validated output means post-processing runs again on every cache hit, so fixes to post-processing rules apply to cached data without new API calls, and accepted claims and skip reasons are never stale.
+- **Cache key.** SHA-256 over a canonical JSON object containing:
+  - the cache format version;
+  - the prompt version and a hash of the system prompt text (so prompt edits without a version bump still miss);
+  - a hash of the `ExtractedClaims` JSON Schema (the response schema version);
+  - the model settings that affect output (provider, model, response format, thinking mode, temperature, max tokens);
+  - a hash of the source text.
+- **Writes.** Only successfully validated responses are written; API errors and invalid responses propagate and are never cached. Writes are atomic (temporary file plus rename). A failed write is logged and does not discard the result.
+- **Reads.** A missing entry is a miss. An unreadable or invalid entry is logged, treated as a miss, and overwritten by the next successful call.
+- **No TTL.** Entries never expire. Extraction depends only on the source text and the configuration in the key, not on facts that change over time. Verification results (M4), which depend on live external evidence, must not reuse this cache without an expiry policy.
+- **Stored data.** Entries store hashes of the source text and prompt, not the full guide text. However, the cached claims contain verbatim `original_excerpt` passages and normalized statements derived from the guide, so cache files can hold fragments of user-submitted content. The cache directory (default `.roamly_cache/extractions/`) is local and excluded from git.
 
 ## 8. Verification and verdict aggregation (Planned, M4)
 
@@ -141,7 +161,7 @@ A typical run with three claims needs about five LLM calls: one or two for extra
 | Layer | Purpose | Runs in CI | Status |
 | --- | --- | --- | --- |
 | Unit | Deterministic logic and model validation | Yes | Implemented |
-| Contract | Pipeline steps with `FakeLLMClient` and fixtures; covers acceptance criteria | Yes | Planned (M1) |
+| Contract | Pipeline steps with `FakeLLMClient`, mocked HTTP, and fixtures; covers acceptance criteria | Yes | Implemented (M1) |
 | Recorded | Replay cached real-model responses for prompt regression | Yes | Planned (M1.3) |
 | Live | Real APIs and websites, marked `@pytest.mark.live` | No (manual) | Planned |
 | Evaluation | Metrics on labelled datasets; reports numbers, not pass/fail | No (manual) | Planned (M1.4, M6) |
@@ -163,6 +183,8 @@ Fake clients by default in tests, an on-disk response cache, at most three verif
 | D-005 | 2026-10-27 | Keep `domain.py` as a single module for now | Few models; split into a package when size justifies it |
 | D-006 | 2026-10-27 | DeepSeek is the initial LLM provider for development and the M1 evaluation, accessed only through `LLMClient` and configured via environment variables | Existing API credits; provider independence allows switching to OpenAI or Anthropic later; structured-output support to be verified in M1.3 |
 | D-007 | 2026-10-27 | Add ruff for linting and formatting | Low-cost consistency from the start |
+| D-008 | 2026-10-29 | Cache validated `ExtractedClaims` in an extraction-level `ExtractionCache` instead of a generic `CachedLLMClient`; re-run post-processing on every hit; no TTL | The key must include the prompt version and response schema, which only the extraction layer knows; caching pre-post-processing output keeps results consistent with current rules; extraction does not depend on time-sensitive facts |
+| D-009 | 2026-10-29 | Put extraction orchestration in `pipeline.py` and expose it through the `roamly-extract` CLI; limit input to 30,000 characters | Avoids a circular import between `extraction.py` and `extraction_cache.py`; the limit bounds per-run LLM cost |
 
 ## 13. Open questions
 
