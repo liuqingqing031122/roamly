@@ -1,0 +1,286 @@
+{
+  "dataset": "extraction_eval_v1",
+  "status": "frozen",
+  "guidelines": "docs/extraction_annotation_guidelines.md",
+  "notes": "All venues are fictional. Ground truth follows guidelines v1.0 and was confirmed by human review. Frozen: create a new dataset version instead of editing these cases.",
+  "cases": [
+    {
+      "id": "ext-001",
+      "description": "Simple opening hours with no restricting qualifier.",
+      "tags": [
+        "opening_hours",
+        "no_scope"
+      ],
+      "source_text": "Bluefin Bakery opens every day from 7am to 3pm.",
+      "expected_claims": [
+        {
+          "place_name": "Bluefin Bakery",
+          "claim_type": "opening_hours",
+          "original_excerpt": "Bluefin Bakery opens every day from 7am to 3pm.",
+          "normalized_statement": "Bluefin Bakery opens every day from 7am to 3pm.",
+          "scope": []
+        }
+      ],
+      "expected_skipped": [],
+      "must_not_extract": [],
+      "annotation_notes": "Q1: 'every day' is the regular frequency, not an extra restriction, so scope is empty; normalized_statement must still keep 'every day'. Clock times are not scope."
+    },
+    {
+      "id": "ext-002",
+      "description": "Opening hours limited to a season.",
+      "tags": [
+        "opening_hours",
+        "scope"
+      ],
+      "source_text": "During winter, the Old Pier Market is open from 10am to 6pm.",
+      "expected_claims": [
+        {
+          "place_name": "Old Pier Market",
+          "claim_type": "opening_hours",
+          "original_excerpt": "During winter, the Old Pier Market is open from 10am to 6pm.",
+          "normalized_statement": "Old Pier Market is open from 10am to 6pm during winter.",
+          "scope": [
+            "During winter"
+          ]
+        }
+      ],
+      "expected_skipped": [],
+      "must_not_extract": [],
+      "annotation_notes": "The qualifier appears before the venue name; place_name drops the leading article."
+    },
+    {
+      "id": "ext-003",
+      "description": "Reservation policy: walk-ins only.",
+      "tags": [
+        "reservation",
+        "no_scope"
+      ],
+      "source_text": "Casa Lume only accepts walk-ins and does not take bookings.",
+      "expected_claims": [
+        {
+          "place_name": "Casa Lume",
+          "claim_type": "reservation",
+          "original_excerpt": "Casa Lume only accepts walk-ins and does not take bookings.",
+          "normalized_statement": "Casa Lume only accepts walk-ins and does not take bookings.",
+          "scope": []
+        }
+      ],
+      "expected_skipped": [],
+      "must_not_extract": [],
+      "annotation_notes": "Annotated as one claim; splitting into 'accepts walk-ins' and 'no bookings' would be redundant."
+    },
+    {
+      "id": "ext-004",
+      "description": "Temporary closure with an end date.",
+      "tags": [
+        "closure",
+        "scope",
+        "deadline"
+      ],
+      "source_text": "Lighthouse Tower is closed for renovation until 30 April 2027.",
+      "expected_claims": [
+        {
+          "place_name": "Lighthouse Tower",
+          "claim_type": "closure",
+          "original_excerpt": "Lighthouse Tower is closed for renovation until 30 April 2027.",
+          "normalized_statement": "Lighthouse Tower is closed for renovation until 30 April 2027.",
+          "scope": [
+            "until 30 April 2027"
+          ]
+        }
+      ],
+      "expected_skipped": [],
+      "must_not_extract": [],
+      "annotation_notes": "C2: the closure end date is scope. The real-API smoke test returned scope null for this sentence."
+    },
+    {
+      "id": "ext-005",
+      "description": "Venue named only in a heading; pronoun claims about opening days and a weekly and holiday rest schedule.",
+      "tags": [
+        "opening_hours",
+        "context_place",
+        "scope",
+        "rest_days"
+      ],
+      "source_text": "Harbour Tile Museum\n\nIt is open Tuesday to Sunday from 10am to 5pm. It is closed on Mondays and public holidays.",
+      "expected_claims": [
+        {
+          "place_name": "Harbour Tile Museum",
+          "claim_type": "opening_hours",
+          "original_excerpt": "It is open Tuesday to Sunday from 10am to 5pm.",
+          "normalized_statement": "Harbour Tile Museum is open Tuesday to Sunday from 10am to 5pm.",
+          "scope": [
+            "Tuesday to Sunday"
+          ]
+        },
+        {
+          "place_name": "Harbour Tile Museum",
+          "claim_type": "opening_hours",
+          "original_excerpt": "It is closed on Mondays and public holidays.",
+          "normalized_statement": "Harbour Tile Museum is closed on Mondays and public holidays.",
+          "scope": [
+            "on Mondays and public holidays"
+          ]
+        }
+      ],
+      "expected_skipped": [],
+      "must_not_extract": [],
+      "annotation_notes": "Excerpts do not contain the venue name; place_name comes from the heading. C3: weekly and public-holiday rest days are opening_hours, not closure. C1: operating days are scope. 'on Mondays and public holidays' is one coordinated qualifier and stays a single scope item (Q3)."
+    },
+    {
+      "id": "ext-006",
+      "description": "Personal observation that must not become a recurring rule.",
+      "tags": [
+        "observation",
+        "opening_hours"
+      ],
+      "source_text": "We visited Taberna Azul on a Monday and it was open.",
+      "expected_claims": [],
+      "expected_skipped": [
+        {
+          "place_name": "Taberna Azul",
+          "claim_type": "opening_hours",
+          "original_excerpt": "We visited Taberna Azul on a Monday and it was open.",
+          "reason": "observation"
+        }
+      ],
+      "must_not_extract": [],
+      "annotation_notes": "Mirrors AC-04. Returning nothing at all is also acceptable behaviour, but the expected output is a skipped observation."
+    },
+    {
+      "id": "ext-007",
+      "description": "Factual statements outside the supported claim types.",
+      "tags": [
+        "unsupported"
+      ],
+      "source_text": "A coffee at Bluefin Bakery costs 2 euros. Bluefin Bakery only accepts cash.",
+      "expected_claims": [],
+      "expected_skipped": [
+        {
+          "place_name": "Bluefin Bakery",
+          "claim_type": "unsupported",
+          "original_excerpt": "A coffee at Bluefin Bakery costs 2 euros.",
+          "reason": "unsupported_type"
+        },
+        {
+          "place_name": "Bluefin Bakery",
+          "claim_type": "unsupported",
+          "original_excerpt": "Bluefin Bakery only accepts cash.",
+          "reason": "unsupported_type"
+        }
+      ],
+      "must_not_extract": [],
+      "annotation_notes": "Mirrors AC-06 (price) and adds a payment-method claim."
+    },
+    {
+      "id": "ext-008",
+      "description": "Subjective opinions only; nothing should be extracted.",
+      "tags": [
+        "opinion",
+        "no_claims"
+      ],
+      "source_text": "The rooftop terrace at Hotel Miradouro has the best sunset view in the city. The staff are wonderfully friendly.",
+      "expected_claims": [],
+      "expected_skipped": [],
+      "must_not_extract": [
+        "The rooftop terrace at Hotel Miradouro has the best sunset view in the city.",
+        "The staff are wonderfully friendly."
+      ],
+      "annotation_notes": "Any accepted claim, including one from these sentences, is a false positive. Candidates that post-processing skips are diagnostic only."
+    },
+    {
+      "id": "ext-009",
+      "description": "Several claims about two venues, with context-based place names.",
+      "tags": [
+        "multiple_claims",
+        "opening_hours",
+        "reservation",
+        "closure",
+        "scope",
+        "context_place"
+      ],
+      "source_text": "Mercado Norte is open Monday to Saturday from 8am to 2pm. Its upstairs restaurant, Sala Norte, requires a reservation for dinner. Sala Norte is closed for refurbishment from 1 to 21 August 2027.",
+      "expected_claims": [
+        {
+          "place_name": "Mercado Norte",
+          "claim_type": "opening_hours",
+          "original_excerpt": "Mercado Norte is open Monday to Saturday from 8am to 2pm.",
+          "normalized_statement": "Mercado Norte is open Monday to Saturday from 8am to 2pm.",
+          "scope": [
+            "Monday to Saturday"
+          ]
+        },
+        {
+          "place_name": "Sala Norte",
+          "claim_type": "reservation",
+          "original_excerpt": "Its upstairs restaurant, Sala Norte, requires a reservation for dinner.",
+          "normalized_statement": "Sala Norte requires a reservation for dinner.",
+          "scope": [
+            "for dinner"
+          ]
+        },
+        {
+          "place_name": "Sala Norte",
+          "claim_type": "closure",
+          "original_excerpt": "Sala Norte is closed for refurbishment from 1 to 21 August 2027.",
+          "normalized_statement": "Sala Norte is closed for refurbishment from 1 to 21 August 2027.",
+          "scope": [
+            "from 1 to 21 August 2027"
+          ]
+        }
+      ],
+      "expected_skipped": [],
+      "must_not_extract": [],
+      "annotation_notes": "The reservation applies to Sala Norte, not Mercado Norte. 'upstairs restaurant' is description, not a claim. C3: a dated refurbishment is a specific closure event. C1/C2: operating days and the closure period are scope."
+    },
+    {
+      "id": "ext-010",
+      "description": "Conditional reservation rule whose condition is easy to omit.",
+      "tags": [
+        "reservation",
+        "scope",
+        "condition"
+      ],
+      "source_text": "At Casa Lume, reservations are only required for groups of six or more.",
+      "expected_claims": [
+        {
+          "place_name": "Casa Lume",
+          "claim_type": "reservation",
+          "original_excerpt": "At Casa Lume, reservations are only required for groups of six or more.",
+          "normalized_statement": "Casa Lume requires reservations only for groups of six or more.",
+          "scope": [
+            "for groups of six or more"
+          ]
+        }
+      ],
+      "expected_skipped": [],
+      "must_not_extract": [],
+      "annotation_notes": "Tests rule 7 of the guidelines: 'Casa Lume requires reservations' with scope null is detected but semantically wrong."
+    },
+    {
+      "id": "ext-011",
+      "description": "One reservation rule restricted by two independent qualifiers.",
+      "tags": [
+        "reservation",
+        "scope",
+        "multiple_scope"
+      ],
+      "source_text": "On weekends, Adega Serena requires reservations during summer.",
+      "expected_claims": [
+        {
+          "place_name": "Adega Serena",
+          "claim_type": "reservation",
+          "original_excerpt": "On weekends, Adega Serena requires reservations during summer.",
+          "normalized_statement": "Adega Serena requires reservations on weekends during summer.",
+          "scope": [
+            "On weekends",
+            "during summer"
+          ]
+        }
+      ],
+      "expected_skipped": [],
+      "must_not_extract": [],
+      "annotation_notes": "Q3: the two qualifiers are stated separately and both apply (AND), so they are separate scope items. Omitting either one broadens the rule and fails scope. A single combined item such as 'on weekends during summer' is semantically equivalent."
+    }
+  ]
+}

@@ -4,7 +4,7 @@ The prompt is provider-independent. Untrusted guide text is only ever placed in 
 user message, wrapped in delimiters; the system prompt contains instructions only.
 """
 
-EXTRACTION_PROMPT_VERSION = "extraction-v1"
+EXTRACTION_PROMPT_VERSION = "extraction-v2"
 
 EXTRACTION_SYSTEM_PROMPT = """\
 You extract checkable claims about venues from travel-guide text.
@@ -53,9 +53,11 @@ Return an empty list if there are no claims.
   - "observation": a one-time personal experience, even if it mentions a day or
     time (e.g. "I visited the museum on Monday", "we got a table without booking").
     Never turn an observation into a general rule.
-- `scope`: a temporal or applicability qualifier only if it is explicitly stated
-  (e.g. "in summer", "except public holidays", "on weekends"). Copy it as written.
-  Otherwise use null. Do not infer dates or seasons.
+- `scope`: a list of temporal or applicability qualifiers that are explicitly
+  stated (e.g. ["in summer"], ["except public holidays"], ["on weekends"]).
+  Copy each one as written. Put separately stated qualifiers in separate items;
+  keep qualifiers joined by "and" or "or" together in one item. Use an empty list
+  if there are none. Do not infer dates or seasons.
 
 ## Example
 
@@ -70,22 +72,22 @@ Output:
    "assertion_kind": "policy",
    "original_excerpt": "The Rose Café opens at 8am on weekdays.",
    "normalized_statement": "Rose Café opens at 8am on weekdays.",
-   "scope": "on weekdays"},
+   "scope": ["on weekdays"]},
   {"place_name": "Rose Café", "claim_type": "reservation",
    "assertion_kind": "observation",
    "original_excerpt": "We got a table without booking last Sunday.",
    "normalized_statement": "The author got a table at Rose Café without booking.",
-   "scope": null},
+   "scope": []},
   {"place_name": "Rose Café", "claim_type": "reservation",
    "assertion_kind": "policy",
    "original_excerpt": "Book ahead in summer.",
    "normalized_statement": "Booking ahead at Rose Café is advised in summer.",
-   "scope": "in summer"},
+   "scope": ["in summer"]},
   {"place_name": "Rose Café", "claim_type": "unsupported",
    "assertion_kind": "policy",
    "original_excerpt": "Entry costs €5.",
    "normalized_statement": "Entry to Rose Café costs €5.",
-   "scope": null}
+   "scope": []}
 ]}
 """
 

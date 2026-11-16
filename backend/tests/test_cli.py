@@ -22,7 +22,7 @@ LLM_OUTPUT = {
             "assertion_kind": "policy",
             "original_excerpt": "The museum is open every Monday.",
             "normalized_statement": "City Museum is open on Mondays.",
-            "scope": None,
+            "scope": [],
         },
         {
             "place_name": "City Museum",
@@ -30,7 +30,7 @@ LLM_OUTPUT = {
             "assertion_kind": "observation",
             "original_excerpt": "I visited the museum on Monday.",
             "normalized_statement": "The author visited City Museum on a Monday.",
-            "scope": None,
+            "scope": [],
         },
         {
             "place_name": "City Museum",
@@ -38,7 +38,7 @@ LLM_OUTPUT = {
             "assertion_kind": "policy",
             "original_excerpt": "The museum is open daily.",
             "normalized_statement": "City Museum is open daily.",
-            "scope": None,
+            "scope": [],
         },
     ]
 }

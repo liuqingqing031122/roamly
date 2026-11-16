@@ -19,7 +19,7 @@ VALID_OUTPUT = {
             "assertion_kind": "policy",
             "original_excerpt": "The museum is open every Monday.",
             "normalized_statement": "City Museum is open on Mondays.",
-            "scope": None,
+            "scope": [],
         }
     ]
 }

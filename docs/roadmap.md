@@ -43,6 +43,7 @@ Milestones M1–M6 correspond to items 1–6 of the requirements delivery plan (
 
 - **M1.1 Schemas and LLM abstraction (~5 h)**
   - Add `Claim.scope: str | None = None` (explicitly stated qualifiers only; no inferred dates).
+    *Superseded in M1.4a: `scope` is now `list[str]`, with `[]` when there is no qualifier (see the [annotation guidelines](extraction_annotation_guidelines.md)).*
   - Add `ExtractedClaim` (with optional `place_name`), `SkippedClaim`, and `ExtractionResult`.
   - Add the `LLMClient` protocol and `FakeLLMClient`.
 - **M1.2 Deterministic post-processing (~6 h)**

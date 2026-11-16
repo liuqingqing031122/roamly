@@ -86,7 +86,7 @@ eval/              # M1+: labelled datasets and metric scripts
 
 ### Implemented in M1 (`backend/src/roamly/extraction.py`)
 
-- **Claim.scope:** `str | None = None`. Holds only temporal or applicability qualifiers explicitly stated in the source (e.g. "in summer", "except public holidays"). Dates are never inferred; parsing is deferred to verification (M4).
+- **Claim.scope:** `list[str]`, empty by default. Each item is a temporal or applicability qualifier explicitly stated in the source (e.g. `["in summer"]`, `["on weekends", "only during summer"]`); items are combined with AND. Dates are never inferred; parsing is deferred to verification (M4). `ExtractedClaim` also accepts `null` or a single string from the LLM and converts them to a list; post-processing drops blank items. See the [annotation guidelines](extraction_annotation_guidelines.md) for the full rules.
 - **ExtractedClaim** (in `extraction.py`): the untrusted LLM output schema.
   - `place_name: str | None` — `None` when the place cannot be determined from the source or its explicit context. Place names must never be invented.
   - `claim_type`: the three supported types plus `unsupported`.
@@ -124,7 +124,7 @@ A typical run with three claims needs about five LLM calls: one or two for extra
   - `DeepSeekClient` — the initial provider for local development and the M1 extraction evaluation. It is not a permanent dependency; OpenAI or Anthropic may be used for deployment or provider comparison.
 - **Configuration.** `ROAMLY_LLM_PROVIDER` (only `deepseek` is supported; the default), `ROAMLY_LLM_MODEL` (default `deepseek-flash`), and `ROAMLY_LLM_API_KEY`. API keys and `.env` files are never committed and never appear in error messages or cache entries.
 - **Structured output.** DeepSeek offers JSON mode (`response_format: json_object`), which guarantees syntactically valid JSON but not schema conformance, and may occasionally return empty content. The adapter therefore appends the response model's JSON Schema to the system prompt, disables thinking mode, and validates every response with Pydantic. Real-API behaviour still needs to be confirmed by a manual smoke test.
-- **Prompt versioning.** Each prompt has a version constant (`extraction-v1`) that is part of the cache key.
+- **Prompt versioning.** Each prompt has a version constant (currently `extraction-v2`, which changed `scope` to a list) that is part of the cache key.
 - **Input limit.** The CLI rejects guide text longer than 30,000 characters before any LLM call or cache access, bounding the cost of a single run.
 
 ### Extraction caching (Implemented, M1.3)

@@ -3,7 +3,7 @@
 from datetime import datetime
 from typing import Literal, Self
 
-from pydantic import BaseModel, HttpUrl, model_validator
+from pydantic import BaseModel, Field, HttpUrl, model_validator
 
 ClaimType = Literal["opening_hours", "reservation", "closure"]
 
@@ -18,8 +18,9 @@ class Claim(BaseModel):
     claim_type: ClaimType
     original_excerpt: str
     normalized_statement: str
-    # Temporal or applicability qualifier stated in the source, e.g. "in summer".
-    scope: str | None = None
+    # Temporal or applicability qualifiers stated in the source, e.g. ["in summer"].
+    # All entries apply together; an empty list means no stated qualifier.
+    scope: list[str] = Field(default_factory=list)
 
 
 class Evidence(BaseModel):

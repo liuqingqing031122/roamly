@@ -52,16 +52,25 @@ def test_claim_accepts_supported_types(claim_type: str) -> None:
     assert claim.claim_type == claim_type
 
 
-def test_claim_scope_defaults_to_none() -> None:
+def test_claim_scope_defaults_to_empty_list() -> None:
     claim = make_claim()
 
-    assert claim.scope is None
+    assert claim.scope == []
 
 
-def test_claim_accepts_scope() -> None:
-    claim = make_claim(scope="except public holidays")
+@pytest.mark.parametrize(
+    "scope", [["except public holidays"], ["on weekends", "only during summer"]]
+)
+def test_claim_accepts_scope_list(scope: list[str]) -> None:
+    claim = make_claim(scope=scope)
 
-    assert claim.scope == "except public holidays"
+    assert claim.scope == scope
+
+
+@pytest.mark.parametrize("scope", [None, "in summer"])
+def test_claim_rejects_non_list_scope(scope: object) -> None:
+    with pytest.raises(ValidationError):
+        make_claim(scope=scope)
 
 
 def test_evidence_parses_url() -> None:
@@ -178,8 +187,8 @@ def test_verification_result_requires_field(field: str) -> None:
 # JSON serialization
 
 
-@pytest.mark.parametrize("scope", [None, "in summer"])
-def test_claim_json_round_trip(scope: str | None) -> None:
+@pytest.mark.parametrize("scope", [[], ["in summer"], ["on weekends", "only during summer"]])
+def test_claim_json_round_trip(scope: list[str]) -> None:
     claim = make_claim(scope=scope)
 
     assert Claim.model_validate_json(claim.model_dump_json()) == claim

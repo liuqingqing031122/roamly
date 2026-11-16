@@ -14,7 +14,7 @@ def split_example() -> tuple[str, str]:
 
 
 def test_prompt_has_version() -> None:
-    assert EXTRACTION_PROMPT_VERSION == "extraction-v1"
+    assert EXTRACTION_PROMPT_VERSION == "extraction-v2"
 
 
 def test_system_prompt_names_all_claim_types_and_assertion_kinds() -> None:

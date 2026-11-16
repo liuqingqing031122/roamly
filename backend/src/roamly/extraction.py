@@ -5,9 +5,9 @@ into a domain `Claim`; these types alone do not guarantee that an excerpt exists
 the source or that a claim is semantically correct.
 """
 
-from typing import Literal
+from typing import Any, Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, field_validator
 
 from roamly.domain import Claim, ClaimType
 
@@ -29,7 +29,17 @@ class ExtractedClaim(BaseModel):
     assertion_kind: AssertionKind
     original_excerpt: str
     normalized_statement: str
-    scope: str | None = None
+    scope: list[str] = Field(default_factory=list)
+
+    @field_validator("scope", mode="before")
+    @classmethod
+    def coerce_scope_to_list(cls, value: Any) -> Any:
+        """Accept null or a single string from the LLM without changing their meaning."""
+        if value is None:
+            return []
+        if isinstance(value, str):
+            return [value]
+        return value
 
 
 class ExtractedClaims(BaseModel):
@@ -81,7 +91,7 @@ def process_extracted_claims(source_text: str, extracted: ExtractedClaims) -> Ex
                 claim_type=candidate.claim_type,
                 original_excerpt=candidate.original_excerpt,
                 normalized_statement=candidate.normalized_statement,
-                scope=candidate.scope,
+                scope=[item.strip() for item in candidate.scope if item.strip()],
             )
         )
 

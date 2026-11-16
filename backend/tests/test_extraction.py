@@ -16,7 +16,7 @@ SOURCE_TEXT = (
     "I visited the museum on Monday. "
     "Tickets cost 10 euros. "
     "Reservations are required at Cafe Lumen. "
-    "Cafe Lumen closes in January."
+    "Cafe Lumen temporarily closes for renovation in January 2027."
 )
 
 
@@ -49,13 +49,34 @@ def test_extracted_claim_accepts_assertion_kinds(assertion_kind: str) -> None:
     assert claim.assertion_kind == assertion_kind
 
 
-def test_extracted_claim_optional_fields_default_to_none() -> None:
+def test_extracted_claim_optional_fields_have_defaults() -> None:
     data = make_extracted().model_dump(exclude={"place_name", "scope"})
 
     claim = ExtractedClaim(**data)
 
     assert claim.place_name is None
-    assert claim.scope is None
+    assert claim.scope == []
+
+
+@pytest.mark.parametrize(
+    ("scope", "expected"),
+    [
+        ([], []),
+        (["on weekdays"], ["on weekdays"]),
+        (["on weekends", "only during summer"], ["on weekends", "only during summer"]),
+        # The LLM may still return the old null or single-string form.
+        (None, []),
+        ("on weekdays", ["on weekdays"]),
+    ],
+)
+def test_extracted_claim_scope_becomes_list(scope: object, expected: list[str]) -> None:
+    assert make_extracted(scope=scope).scope == expected
+
+
+@pytest.mark.parametrize("scope", [42, [1, 2], {"when": "summer"}])
+def test_extracted_claim_rejects_invalid_scope(scope: object) -> None:
+    with pytest.raises(ValidationError):
+        make_extracted(scope=scope)
 
 
 def test_extracted_claim_accepts_explicit_null_place() -> None:
@@ -103,7 +124,7 @@ def test_extracted_claims_parses_llm_json() -> None:
           "assertion_kind": "policy",
           "original_excerpt": "Walk-ins are welcome.",
           "normalized_statement": "Reservations are not required.",
-          "scope": "on weekdays"
+          "scope": ["on weekdays"]
         }
       ]
     }
@@ -113,7 +134,7 @@ def test_extracted_claims_parses_llm_json() -> None:
 
     assert len(parsed.claims) == 1
     assert parsed.claims[0].place_name is None
-    assert parsed.claims[0].scope == "on weekdays"
+    assert parsed.claims[0].scope == ["on weekdays"]
 
 
 def test_extracted_claims_accepts_empty_list() -> None:
@@ -191,7 +212,7 @@ def process(*candidates: ExtractedClaim) -> ExtractionResult:
 
 
 def test_valid_candidate_becomes_claim() -> None:
-    result = process(make_extracted(scope="except public holidays"))
+    result = process(make_extracted(scope=["except public holidays"]))
 
     assert result.skipped == []
     assert result.claims == [
@@ -201,15 +222,29 @@ def test_valid_candidate_becomes_claim() -> None:
             claim_type="opening_hours",
             original_excerpt="The museum is open every Monday.",
             normalized_statement="City Museum is open on Mondays.",
-            scope="except public holidays",
+            scope=["except public holidays"],
         )
     ]
 
 
-def test_scope_defaults_to_none_on_claim() -> None:
+def test_scope_defaults_to_empty_list_on_claim() -> None:
     result = process(make_extracted())
 
-    assert result.claims[0].scope is None
+    assert result.claims[0].scope == []
+
+
+def test_multiple_scope_items_are_preserved_in_order() -> None:
+    scope = ["on weekends", "only during summer"]
+
+    result = process(make_extracted(scope=scope))
+
+    assert result.claims[0].scope == scope
+
+
+def test_blank_scope_items_are_dropped_and_items_trimmed() -> None:
+    result = process(make_extracted(scope=[" in summer ", "", "   "]))
+
+    assert result.claims[0].scope == ["in summer"]
 
 
 def test_unsupported_type_is_skipped() -> None:
@@ -352,9 +387,9 @@ def test_multiple_candidates_keep_order_and_get_sequential_ids() -> None:
     closure = make_extracted(
         place_name="Cafe Lumen",
         claim_type="closure",
-        original_excerpt="Cafe Lumen closes in January.",
-        normalized_statement="Cafe Lumen is closed in January.",
-        scope="in January",
+        original_excerpt="Cafe Lumen temporarily closes for renovation in January 2027.",
+        normalized_statement="Cafe Lumen is temporarily closed for renovation in January 2027.",
+        scope=["in January 2027"],
     )
 
     result = process(museum, tickets, reservation, visit, closure)

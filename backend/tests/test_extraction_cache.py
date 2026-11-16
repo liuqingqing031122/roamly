@@ -69,7 +69,7 @@ def test_same_inputs_give_same_key(tmp_path: Path) -> None:
 @pytest.mark.parametrize(
     "make_other",
     [
-        lambda d: ExtractionCache(d, SETTINGS, prompt_version="extraction-v2"),
+        lambda d: ExtractionCache(d, SETTINGS, prompt_version="extraction-test-other"),
         lambda d: ExtractionCache(d, SETTINGS, system_prompt="A different prompt."),
         lambda d: ExtractionCache(d, {**SETTINGS, "model": "other-model"}),
         lambda d: ExtractionCache(d, {**SETTINGS, "temperature": 0.7}),
@@ -119,3 +119,20 @@ def test_corrupt_entry_is_overwritten_by_put(cache: ExtractionCache) -> None:
     cache.put(SOURCE_TEXT, make_output())
 
     assert cache.get(SOURCE_TEXT) == make_output()
+
+
+def test_entry_with_legacy_scope_format_is_still_readable(cache: ExtractionCache) -> None:
+    # Entries written before scope became a list stored null or a single string.
+    cache.directory.mkdir(parents=True, exist_ok=True)
+    legacy_claim = make_output().claims[0].model_dump(exclude={"scope"})
+    entry = {
+        "output": {
+            "claims": [{**legacy_claim, "scope": None}, {**legacy_claim, "scope": "in summer"}]
+        }
+    }
+    cache.path(SOURCE_TEXT).write_text(json.dumps(entry), encoding="utf-8")
+
+    output = cache.get(SOURCE_TEXT)
+
+    assert output is not None
+    assert [claim.scope for claim in output.claims] == [[], ["in summer"]]
