@@ -22,3 +22,6 @@ dist/
 .DS_Store
 .vscode/
 .idea/
+
+# Local evaluation run outputs (baselines are stored separately)
+eval_runs/

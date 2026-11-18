@@ -12,6 +12,7 @@ dependencies = [
 
 [project.scripts]
 roamly-extract = "roamly.cli:main"
+roamly-eval = "roamly.evaluation.cli:main"
 
 [build-system]
 requires = ["hatchling"]

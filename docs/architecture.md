@@ -55,6 +55,11 @@ backend/
     extraction_cache.py   # On-disk cache of validated extraction output
     pipeline.py           # Orchestration: prompt → LLM or cache → post-processing
     cli.py                # `roamly-extract` command
+    evaluation/
+      dataset.py          # Load and validate labelled datasets (read-only)
+      runner.py           # Run the extraction pipeline over every case
+      predictions.py      # Stored run format: save and reload predictions offline
+      cli.py              # `roamly-eval run` and `roamly-eval show` commands
     llm/
       __init__.py         # LLMClient protocol, errors, FakeLLMClient
       deepseek.py         # DeepSeek adapter
@@ -71,7 +76,6 @@ Planned additions, introduced only when a milestone needs them:
     verification/  # M4: evidence assessment, citation checks, verdict aggregation
     ingestion/     # M5: URL policy, safe fetching, content extraction
     api/           # M5: HTTP routers (thin orchestration only)
-eval/              # M1+: labelled datasets and metric scripts
 ```
 
 `domain.py` stays a single module until it grows enough to justify a package.
@@ -164,7 +168,9 @@ Caching lives at the extraction layer (`ExtractionCache` in `extraction_cache.py
 | Contract | Pipeline steps with `FakeLLMClient`, mocked HTTP, and fixtures; covers acceptance criteria | Yes | Implemented (M1) |
 | Recorded | Replay cached real-model responses for prompt regression | Yes | Planned (M1.3) |
 | Live | Real APIs and websites, marked `@pytest.mark.live` | No (manual) | Planned |
-| Evaluation | Metrics on labelled datasets; reports numbers, not pass/fail | No (manual) | Planned (M1.4, M6) |
+| Evaluation | Metrics on labelled datasets; reports numbers, not pass/fail | No (manual) | Runner implemented (M1.4b); scoring planned |
+
+Evaluation runs are separated from scoring. `roamly-eval run` passes each dataset case through the normal extraction pipeline (`extract_claims`, including the cache and post-processing) and saves one new JSON file per run: the full `ExtractionResult` or the error for each case ID, plus the dataset name, path, and SHA-256, the prompt version and system-prompt hash, the client's non-secret model settings, timestamps, the Git HEAD commit and whether the working tree had uncommitted changes when the run started (`null` when unavailable), and per-case LLM calls, cache hits, and token usage. A failing case is recorded and the run continues. Ground truth is not copied into run files. `roamly-eval show` and later scoring read saved runs without calling an LLM. Existing run files are never replaced unless `--overwrite` is given.
 
 Acceptance criteria are implemented first with synthetic fixtures; live-web tests remain separate, as required by the requirements document.
 
@@ -185,6 +191,7 @@ Fake clients by default in tests, an on-disk response cache, at most three verif
 | D-007 | 2026-10-27 | Add ruff for linting and formatting | Low-cost consistency from the start |
 | D-008 | 2026-10-29 | Cache validated `ExtractedClaims` in an extraction-level `ExtractionCache` instead of a generic `CachedLLMClient`; re-run post-processing on every hit; no TTL | The key must include the prompt version and response schema, which only the extraction layer knows; caching pre-post-processing output keeps results consistent with current rules; extraction does not depend on time-sensitive facts |
 | D-009 | 2026-10-29 | Put extraction orchestration in `pipeline.py` and expose it through the `roamly-extract` CLI; limit input to 30,000 characters | Avoids a circular import between `extraction.py` and `extraction_cache.py`; the limit bounds per-run LLM cost |
+| D-010 | 2026-11-18 | Evaluation runner reuses `extract_claims` unchanged and stores predictions as versioned run files separate from scoring; token usage is recorded by wrapping the `LLMClient` | One extraction path for production and evaluation; scoring can be iterated without new API calls; the pipeline needs no evaluation-specific changes |
 
 ## 13. Open questions
 
