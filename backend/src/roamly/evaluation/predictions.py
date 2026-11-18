@@ -120,23 +120,29 @@ def make_run_id(dataset_name: str, prompt_version: str, started_at: datetime) ->
     return f"{dataset_name}__{prompt_version}__{started_at.strftime('%Y%m%dT%H%M%SZ')}"
 
 
-def save_run(run: EvaluationRun, path: Path, *, overwrite: bool = False) -> None:
-    """Write a run file atomically. Refuses to replace an existing file unless `overwrite`."""
+def write_json_file(path: Path, content: str, *, overwrite: bool = False) -> None:
+    """Write a file atomically. Raises `FileExistsError` if it exists and not `overwrite`."""
     path.parent.mkdir(parents=True, exist_ok=True)
     fd, tmp_name = tempfile.mkstemp(dir=path.parent, suffix=".tmp")
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as file:
-            file.write(run.model_dump_json(indent=2))
+            file.write(content)
             file.write("\n")
         if overwrite:
             os.replace(tmp_name, path)
         else:
-            # A hard link fails if the target exists, so no earlier run is ever replaced.
+            # A hard link fails if the target exists, so no earlier file is ever replaced.
             os.link(tmp_name, path)
-    except FileExistsError as exc:
-        raise RunFileError(f"Run file already exists: {path}") from exc
     finally:
         Path(tmp_name).unlink(missing_ok=True)
+
+
+def save_run(run: EvaluationRun, path: Path, *, overwrite: bool = False) -> None:
+    """Write a run file atomically. Refuses to replace an existing file unless `overwrite`."""
+    try:
+        write_json_file(path, run.model_dump_json(indent=2), overwrite=overwrite)
+    except FileExistsError as exc:
+        raise RunFileError(f"Run file already exists: {path}") from exc
 
 
 def load_run(path: Path) -> EvaluationRun:

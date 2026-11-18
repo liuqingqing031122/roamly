@@ -59,6 +59,8 @@ backend/
       dataset.py          # Load and validate labelled datasets (read-only)
       runner.py           # Run the extraction pipeline over every case
       predictions.py      # Stored run format: save and reload predictions offline
+      matching.py         # Offline one-to-one matching of expected and predicted claims
+      git_info.py         # Best-effort Git commit and dirty state for run metadata
       cli.py              # `roamly-eval run` and `roamly-eval show` commands
     llm/
       __init__.py         # LLMClient protocol, errors, FakeLLMClient
@@ -168,9 +170,18 @@ Caching lives at the extraction layer (`ExtractionCache` in `extraction_cache.py
 | Contract | Pipeline steps with `FakeLLMClient`, mocked HTTP, and fixtures; covers acceptance criteria | Yes | Implemented (M1) |
 | Recorded | Replay cached real-model responses for prompt regression | Yes | Planned (M1.3) |
 | Live | Real APIs and websites, marked `@pytest.mark.live` | No (manual) | Planned |
-| Evaluation | Metrics on labelled datasets; reports numbers, not pass/fail | No (manual) | Runner implemented (M1.4b); scoring planned |
+| Evaluation | Metrics on labelled datasets; reports numbers, not pass/fail | No (manual) | Runner and claim matching implemented (M1.4b); scoring planned |
 
-Evaluation runs are separated from scoring. `roamly-eval run` passes each dataset case through the normal extraction pipeline (`extract_claims`, including the cache and post-processing) and saves one new JSON file per run: the full `ExtractionResult` or the error for each case ID, plus the dataset name, path, and SHA-256, the prompt version and system-prompt hash, the client's non-secret model settings, timestamps, the Git HEAD commit and whether the working tree had uncommitted changes when the run started (`null` when unavailable), and per-case LLM calls, cache hits, and token usage. A failing case is recorded and the run continues. Ground truth is not copied into run files. `roamly-eval show` and later scoring read saved runs without calling an LLM. Existing run files are never replaced unless `--overwrite` is given.
+Evaluation runs are separated from scoring. `roamly-eval run` passes each dataset case through the normal extraction pipeline (`extract_claims`, including the cache and post-processing) and saves one new JSON file per run: the full `ExtractionResult` or the error for each case ID, plus the dataset name, path, and SHA-256, the prompt version and system-prompt hash, the client's non-secret model settings, timestamps, the Git HEAD commit and whether the working tree had uncommitted changes when the run started (`null` when unavailable), and per-case LLM calls, cache hits, and token usage. A failing case is recorded and the run continues. Ground truth is not copied into run files. `roamly-eval show` and `roamly-eval match` read saved runs without calling an LLM. Existing run files are never replaced unless `--overwrite` is given.
+
+Claim matching (`roamly-eval match RUN_FILE`, matcher `matching-v1`) implements the *detection matching* defined in the [annotation guidelines](extraction_annotation_guidelines.md) §5 (version 1.1). It pairs expected and accepted predicted claims one-to-one before any scoring. It refuses to run if the dataset's SHA-256 differs from the one recorded in the run, matches only the cases in the run, and keeps failed cases as failed. A pair is a candidate only when both excerpts overlap in the source; statements are then compared by token overlap with venue names removed. Same-venue candidates with similar statements are confirmed automatically, and a type mismatch requires a higher similarity, so a matched pair can still have a wrong type or scope for strict scoring and Level 2 to report. Candidates with a different venue, only moderate similarity, or a close competitor, including one predicted claim that covers several expected claims, are marked `needs_review` and are not counted as matched or unmatched until a person decides. The result is saved next to the run file with the dataset and run hashes.
+
+Planned follow-ups, recorded here so that scoring is built consistently:
+
+- **Thresholds.** The `matching-v1` similarity thresholds are initial heuristics, checked only on dataset v1 and hand-written test cases, not on large real-world data. Any change to the matching rules or thresholds must bump `MATCHER_VERSION` so results stay comparable.
+- **Human review.** Decisions on `needs_review` pairs will be stored in a separate review JSON file keyed by case ID, expected claim ID, and predicted claim ID. Generated matching files are never edited, so matching can be re-run at any time.
+- **Merged claims.** Automatic matching stays one-to-one. Scoring must handle a predicted claim that covers several expected claims explicitly and must never count it as several true positives.
+- **Two Level 1 views.** Scoring will report detection metrics (all detection matches) and strict extraction metrics (matches that also have the correct venue and claim type), as defined in the guidelines §5.
 
 Acceptance criteria are implemented first with synthetic fixtures; live-web tests remain separate, as required by the requirements document.
 
@@ -192,6 +203,7 @@ Fake clients by default in tests, an on-disk response cache, at most three verif
 | D-008 | 2026-10-29 | Cache validated `ExtractedClaims` in an extraction-level `ExtractionCache` instead of a generic `CachedLLMClient`; re-run post-processing on every hit; no TTL | The key must include the prompt version and response schema, which only the extraction layer knows; caching pre-post-processing output keeps results consistent with current rules; extraction does not depend on time-sensitive facts |
 | D-009 | 2026-10-29 | Put extraction orchestration in `pipeline.py` and expose it through the `roamly-extract` CLI; limit input to 30,000 characters | Avoids a circular import between `extraction.py` and `extraction_cache.py`; the limit bounds per-run LLM cost |
 | D-010 | 2026-11-18 | Evaluation runner reuses `extract_claims` unchanged and stores predictions as versioned run files separate from scoring; token usage is recorded by wrapping the `LLMClient` | One extraction path for production and evaluation; scoring can be iterated without new API calls; the pipeline needs no evaluation-specific changes |
+| D-011 | 2026-11-19 | Claim matching is deterministic and separate from scoring: excerpt overlap is required, statement similarity decides, type and scope differences do not block a match, and uncertain or merged pairs go to `needs_review` instead of being guessed. Annotation guidelines 1.1 define this as detection matching and keep the 1.0 same-type rule as strict extraction scoring. Human review decisions will be stored in separate review files | Keeps detection metrics independent of field errors (a wrong type is a quality error, not a missed claim) while preserving the stricter view; uncertain cases are surfaced for human review rather than silently counted as true or false positives; thresholds are initial heuristics, so the matcher is versioned |
 
 ## 13. Open questions
 
