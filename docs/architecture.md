@@ -55,6 +55,7 @@ backend/
     extraction_cache.py   # On-disk cache of validated extraction output
     pipeline.py           # Orchestration: prompt → LLM or cache → post-processing
     cli.py                # `roamly-extract` command
+    places.py             # M2.1: place resolution schemas, PlaceSearch protocol, resolver
     evaluation/
       dataset.py          # Load and validate labelled datasets (read-only)
       runner.py           # Run the extraction pipeline over every case
@@ -72,7 +73,7 @@ Planned additions, introduced only when a milestone needs them:
 
 ```
   src/roamly/
-    places/        # M2: place resolution and ambiguity detection
+    places_nominatim.py  # M2.2: Nominatim adapter for PlaceSearch
     selection.py   # M2: deterministic claim preselection
     retrieval/     # M3: evidence providers, chunking, ranking
     verification/  # M4: evidence assessment, citation checks, verdict aggregation
@@ -103,9 +104,16 @@ Planned additions, introduced only when a milestone needs them:
 
 `ExtractedClaim` and `Claim` are deliberately separate (decision D-004). `Claim` is only constructed by extraction post-processing, so downstream code can rely on every `Claim` having a supported type, a stated place, a policy assertion, and an excerpt found in the source. IDs are assigned by the system, never taken from LLM output.
 
+### Implemented in M2.1 (`backend/src/roamly/places.py`)
+
+- `PlaceCandidate`: one provider-neutral search result (`provider`, `provider_id`, `name`, `display_name`, coordinates, administrative `areas`, optional `category` and `website`).
+- `PlaceResolution`: one per distinct normalized place name, linked to its claims through `claim_ids`. `status` is `resolved`, `ambiguous`, or `unresolved`, with a `reason`; `place` is set only when resolved; all search `candidates` are kept for manual confirmation.
+- `resolve_places(extraction, destination, search)` makes one search per distinct place name. A place is resolved only when exactly one candidate has the same normalized name and lies in the user-provided destination (every comma-separated destination part equals one of the candidate's areas). Partial or missing area information needs confirmation; candidates clearly elsewhere are never chosen. A `PlaceSearchError` makes only that place `unresolved` (`lookup_failed`).
+- `Claim` is unchanged; resolutions refer to claims by ID. Only resolved or user-confirmed places proceed to evidence retrieval.
+
 ### Planned for later milestones
 
-`Place` (with identity status and candidates), `TravelSource`, `Analysis` (a check session with optional destination and visit date), per-evidence assessments, and usage/cost records. Fields such as `published_at`, `source_type`, `limitations`, `verified_at`, and model/prompt version are added when the milestone that uses them begins.
+User confirmation of ambiguous places, `TravelSource`, `Analysis` (a check session with optional destination and visit date), per-evidence assessments, and usage/cost records. Fields such as `published_at`, `source_type`, `limitations`, `verified_at`, and model/prompt version are added when the milestone that uses them begins. A `place_id` on `Claim` is added only when persistence needs it.
 
 ## 6. LLM versus deterministic responsibilities (Planned)
 
@@ -204,6 +212,7 @@ Fake clients by default in tests, an on-disk response cache, at most three verif
 | D-009 | 2026-10-29 | Put extraction orchestration in `pipeline.py` and expose it through the `roamly-extract` CLI; limit input to 30,000 characters | Avoids a circular import between `extraction.py` and `extraction_cache.py`; the limit bounds per-run LLM cost |
 | D-010 | 2026-11-18 | Evaluation runner reuses `extract_claims` unchanged and stores predictions as versioned run files separate from scoring; token usage is recorded by wrapping the `LLMClient` | One extraction path for production and evaluation; scoring can be iterated without new API calls; the pipeline needs no evaluation-specific changes |
 | D-011 | 2026-11-19 | Claim matching is deterministic and separate from scoring: excerpt overlap is required, statement similarity decides, type and scope differences do not block a match, and uncertain or merged pairs go to `needs_review` instead of being guessed. Annotation guidelines 1.1 define this as detection matching and keep the 1.0 same-type rule as strict extraction scoring. Human review decisions will be stored in separate review files | Keeps detection metrics independent of field errors (a wrong type is a quality error, not a missed claim) while preserving the stricter view; uncertain cases are surfaced for human review rather than silently counted as true or false positives; thresholds are initial heuristics, so the matcher is versioned |
+| D-012 | 2026-11-24 | Place resolution (M2.1) is deterministic and conservative: exact match on normalized names, a user-provided destination checked against the candidate's administrative areas, one search per distinct place name, and `resolved` only for a single same-name candidate confirmed inside the destination; everything else is `ambiguous` or `unresolved` with all candidates kept. Search providers sit behind a `PlaceSearch` protocol | A wrong place silently invalidates every later verdict, so uncertainty is surfaced for confirmation instead of guessed; the area check needs no extra API call and is easy to test; Nominatim (M2.2) or a paid provider can be plugged in without changing the resolver |
 
 ## 13. Open questions
 
