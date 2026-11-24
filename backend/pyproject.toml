@@ -14,6 +14,7 @@ dependencies = [
 roamly-extract = "roamly.cli:main"
 roamly-eval = "roamly.evaluation.cli:main"
 roamly-resolve = "roamly.places_cli:main"
+roamly-confirm = "roamly.places_confirm:main"
 
 [build-system]
 requires = ["hatchling"]

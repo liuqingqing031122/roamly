@@ -90,4 +90,13 @@ The current command-line flow covers claim extraction and place resolution; evid
 
    Each place is `resolved`, `ambiguous` (several candidates; a person must choose), or `unresolved`. Nothing is resolved without `--destination`. Place data © OpenStreetMap contributors (ODbL).
 
+3. Confirm places that were not resolved. For each `ambiguous` or `unresolved` place, choose a candidate by number, search again under another name (for example "Livraria Lello" for "Lello Bookshop"), skip it, or quit without saving. The result is written to a new file; the input is kept:
+
+   ```bash
+   uv run roamly-confirm .roamly_runs/places.json
+   # saved as .roamly_runs/places.confirmed.json
+   ```
+
+   Manually confirmed places are `resolved` with reason `manually_confirmed`.
+
 `tests/fixtures/porto_guide.txt` is a short sample guide with real Porto places for manual testing; its statements have not been fact-checked.

@@ -77,6 +77,25 @@ def read_extraction(path: Path) -> ExtractionResult:
         ) from exc
 
 
+def read_resolution_file(path: Path) -> PlaceResolutionFile:
+    """Load a file saved by `roamly-resolve --output` (or `roamly-confirm`)."""
+    try:
+        content = path.read_text(encoding="utf-8")
+    except FileNotFoundError as exc:
+        raise CLIError(f"File not found: {path}") from exc
+    except UnicodeDecodeError as exc:
+        raise CLIError(f"File is not valid UTF-8 text: {path}") from exc
+    except OSError as exc:
+        raise CLIError(f"Cannot read {path}: {exc.strerror}") from exc
+    try:
+        return PlaceResolutionFile.model_validate_json(content)
+    except ValidationError as exc:
+        raise CLIError(
+            f"Not a place resolution file (saved by roamly-resolve --output): {path}\n"
+            f"{format_validation_error(exc)}"
+        ) from exc
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="roamly-resolve",
@@ -168,20 +187,22 @@ def _format_resolution(resolution: PlaceResolution, parts: Sequence[str]) -> lis
     ]
     if resolution.error is not None:
         lines.append(f"  error:   {resolution.error}")
+    if (confirmation := resolution.confirmation) is not None:
+        searched = f", searched {confirmation.search_name!r}" if confirmation.search_name else ""
+        lines.append(f"  manual:  was {confirmation.original_reason}{searched}")
     if not resolution.candidates:
         if resolution.reason != "lookup_failed":
             lines.append("  candidates: none")
         return lines
     lines.append(f"  candidates ({len(resolution.candidates)}):")
     for candidate in resolution.candidates:
-        lines += _format_candidate(candidate, resolution.place, parts)
+        marker = "*" if candidate == resolution.place else "-"
+        lines += format_candidate(candidate, marker, parts)
     return lines
 
 
-def _format_candidate(
-    candidate: PlaceCandidate, chosen: PlaceCandidate | None, parts: Sequence[str]
-) -> list[str]:
-    marker = "*" if candidate == chosen else "-"
+def format_candidate(candidate: PlaceCandidate, marker: str, parts: Sequence[str]) -> list[str]:
+    """Name, id, category, area check, address, and website of one candidate."""
     name = candidate.name or "(no name)"
     details = [candidate.category or "unknown category", f"area: {area_check(candidate, parts)}"]
     lines = [

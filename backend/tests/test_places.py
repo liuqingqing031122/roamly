@@ -7,11 +7,13 @@ from roamly.domain import Claim
 from roamly.extraction import ExtractionResult
 from roamly.places import (
     FakePlaceSearch,
+    ManualConfirmation,
     PlaceCandidate,
     PlaceResolution,
     PlaceSearch,
     PlaceSearchError,
     area_check,
+    confirm_resolution,
     normalize_name,
     resolve_places,
 )
@@ -288,3 +290,65 @@ def test_inconsistent_resolution_is_rejected(fields: dict[str, Any]) -> None:
 def test_candidate_coordinates_are_validated(coordinates: dict[str, float]) -> None:
     with pytest.raises(ValidationError):
         make_candidate(**coordinates)
+
+
+# --- Manual confirmation ----------------------------------------------------------
+
+
+def test_confirm_resolution_records_a_manual_choice() -> None:
+    original = resolve_one([make_candidate(name="Clérigos Tower")], place_name="Torre")
+    chosen = original.candidates[0]
+
+    confirmed = confirm_resolution(original, chosen, candidates=original.candidates)
+
+    assert (confirmed.status, confirmed.reason) == ("resolved", "manually_confirmed")
+    assert confirmed.place == chosen
+    assert (confirmed.place_name, confirmed.claim_ids) == (original.place_name, original.claim_ids)
+    assert confirmed.confirmation == ManualConfirmation(original_reason="no_match")
+
+
+def test_confirm_after_new_search_keeps_search_name_and_new_candidates() -> None:
+    failed = resolve_one(PlaceSearchError("timed out"))
+    found = [make_candidate(name="Livraria Lello")]
+
+    confirmed = confirm_resolution(failed, found[0], candidates=found, search_name="Livraria Lello")
+
+    assert confirmed.candidates == found
+    assert confirmed.error is None
+    assert confirmed.confirmation == ManualConfirmation(
+        original_reason="lookup_failed", search_name="Livraria Lello"
+    )
+
+
+def test_confirm_rejects_resolved_places_and_foreign_candidates() -> None:
+    resolved = resolve_one([make_candidate()])
+    with pytest.raises(ValueError, match="already resolved"):
+        confirm_resolution(resolved, make_candidate(), candidates=[make_candidate()])
+
+    unresolved = resolve_one([])
+    with pytest.raises(ValueError, match="one of the candidates"):
+        confirm_resolution(unresolved, make_candidate(), candidates=[])
+
+
+@pytest.mark.parametrize(
+    "fields",
+    [
+        {"status": "resolved", "reason": "manually_confirmed", "place": make_candidate()},
+        {
+            "status": "unresolved",
+            "reason": "no_match",
+            "confirmation": {"original_reason": "no_match"},
+        },
+    ],
+    ids=["manual_without_confirmation", "confirmation_without_manual"],
+)
+def test_confirmation_must_match_reason(fields: dict[str, Any]) -> None:
+    with pytest.raises(ValidationError, match="confirmation"):
+        PlaceResolution.model_validate({"place_name": "Casa Lume", "claim_ids": ["c"]} | fields)
+
+
+def test_resolutions_without_confirmation_field_still_load() -> None:
+    # Files written before manual confirmation existed have no "confirmation" key.
+    data = resolve_one([]).model_dump(exclude={"confirmation"})
+
+    assert PlaceResolution.model_validate(data).confirmation is None

@@ -17,6 +17,10 @@ normalization as place names. Exact comparison only, no substring or fuzzy match
 
 Only `inside` can lead to `resolved`; `unknown` keeps the candidate for a person to
 confirm; `outside` candidates are kept for reference but never chosen.
+
+A person can later confirm a candidate for a place that was not resolved
+(`confirm_resolution`). The result is `resolved` with reason `manually_confirmed`, so
+it is never mistaken for an automatic match; the resolver itself never produces it.
 """
 
 from collections.abc import Sequence
@@ -36,6 +40,7 @@ ResolutionReason = Literal[
     "outside_destination",  # unresolved: same-name candidates exist, all elsewhere
     "no_match",  # unresolved: no candidate has the same name
     "lookup_failed",  # unresolved: the search itself failed
+    "manually_confirmed",  # resolved: a person chose the place (never set automatically)
 ]
 
 _STATUS_BY_REASON: dict[ResolutionReason, ResolutionStatus] = {
@@ -45,6 +50,7 @@ _STATUS_BY_REASON: dict[ResolutionReason, ResolutionStatus] = {
     "outside_destination": "unresolved",
     "no_match": "unresolved",
     "lookup_failed": "unresolved",
+    "manually_confirmed": "resolved",
 }
 
 AreaCheck = Literal["inside", "outside", "unknown"]
@@ -65,6 +71,15 @@ class PlaceCandidate(BaseModel):
     website: str | None = None
 
 
+class ManualConfirmation(BaseModel):
+    """How a person confirmed a place that automatic resolution did not resolve."""
+
+    # The automatic reason before confirmation, e.g. "no_match".
+    original_reason: ResolutionReason
+    # The name the person searched for, when the place was chosen from a new search.
+    search_name: str | None = None
+
+
 class PlaceResolution(BaseModel):
     """The resolution of one place name, shared by every claim that mentions it."""
 
@@ -78,6 +93,8 @@ class PlaceResolution(BaseModel):
     candidates: list[PlaceCandidate] = Field(default_factory=list)
     # The search error message; set only when the lookup failed.
     error: str | None = None
+    # Set only when a person confirmed the place (reason "manually_confirmed").
+    confirmation: ManualConfirmation | None = None
 
     @model_validator(mode="after")
     def check_consistency(self) -> Self:
@@ -87,9 +104,38 @@ class PlaceResolution(BaseModel):
             raise ValueError("A place is required if and only if the status is 'resolved'")
         if (self.error is not None) != (self.reason == "lookup_failed"):
             raise ValueError("An error is required if and only if the lookup failed")
+        if (self.confirmation is not None) != (self.reason == "manually_confirmed"):
+            raise ValueError("A confirmation is required if and only if it was manual")
         if not self.claim_ids:
             raise ValueError("A resolution must belong to at least one claim")
         return self
+
+
+def confirm_resolution(
+    resolution: PlaceResolution,
+    chosen: PlaceCandidate,
+    *,
+    candidates: list[PlaceCandidate],
+    search_name: str | None = None,
+) -> PlaceResolution:
+    """Record that a person chose `chosen` for a place that is not resolved yet.
+
+    `candidates` are the results the person chose from: the original candidates, or
+    the results of a new search for `search_name`. Place name and claims are kept.
+    """
+    if resolution.status == "resolved":
+        raise ValueError(f"{resolution.place_name!r} is already resolved")
+    if chosen not in candidates:
+        raise ValueError("The chosen place must be one of the candidates")
+    return PlaceResolution(
+        place_name=resolution.place_name,
+        claim_ids=resolution.claim_ids,
+        status="resolved",
+        reason="manually_confirmed",
+        place=chosen,
+        candidates=candidates,
+        confirmation=ManualConfirmation(original_reason=resolution.reason, search_name=search_name),
+    )
 
 
 class PlaceSearchError(Exception):
