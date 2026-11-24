@@ -5,6 +5,7 @@ into a domain `Claim`; these types alone do not guarantee that an excerpt exists
 the source or that a claim is semantically correct.
 """
 
+import re
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field, field_validator
@@ -70,6 +71,8 @@ def process_extracted_claims(source_text: str, extracted: ExtractedClaims) -> Ex
 
     Candidates are processed in their original order. Accepted claims receive
     sequential IDs ("claim-1", "claim-2", ...), which are unique within one result.
+    An accepted claim's `original_excerpt` is the matching span of the source text, so
+    it differs from the LLM's excerpt only where whitespace differs (see `find_excerpt`).
     """
     claims: list[Claim] = []
     skipped: list[SkippedClaim] = []
@@ -83,13 +86,15 @@ def process_extracted_claims(source_text: str, extracted: ExtractedClaims) -> Ex
 
         # Guaranteed by _skip_reason; also narrows the type to the domain ClaimType.
         assert candidate.claim_type != "unsupported"
+        excerpt = find_excerpt(source_text, candidate.original_excerpt)
+        assert excerpt is not None
         accepted_keys.add(_duplicate_key(candidate))
         claims.append(
             Claim(
                 id=f"claim-{len(claims) + 1}",
                 place_name=(candidate.place_name or "").strip(),
                 claim_type=candidate.claim_type,
-                original_excerpt=candidate.original_excerpt,
+                original_excerpt=excerpt,
                 normalized_statement=candidate.normalized_statement,
                 scope=[item.strip() for item in candidate.scope if item.strip()],
             )
@@ -106,14 +111,33 @@ def _skip_reason(
         return "unsupported_type"
     if candidate.assertion_kind == "observation":
         return "observation"
-    # An empty excerpt is a substring of any text, so it cannot link to the source.
-    if not candidate.original_excerpt.strip() or candidate.original_excerpt not in source_text:
+    if find_excerpt(source_text, candidate.original_excerpt) is None:
         return "excerpt_not_found"
     if candidate.place_name is None or not candidate.place_name.strip():
         return "missing_place"
     if _duplicate_key(candidate) in accepted_keys:
         return "duplicate"
     return None
+
+
+def find_excerpt(source_text: str, excerpt: str) -> str | None:
+    """Return the first span of `source_text` that equals `excerpt`, or None.
+
+    Every run of whitespace (spaces, line breaks, tabs) matches any other run of
+    whitespace, because the LLM often joins lines that the source wraps. Everything
+    else must match exactly: case, punctuation, and words, with no fuzzy matching.
+    Whitespace at the edges still has to be present in the source.
+    """
+    # An empty excerpt is found in any text, so it cannot link to the source.
+    if not excerpt.strip():
+        return None
+    pattern = "".join(
+        r"\s+" if part.isspace() else re.escape(part)
+        for part in re.split(r"(\s+)", excerpt)
+        if part
+    )
+    match = re.search(pattern, source_text)
+    return match.group() if match else None
 
 
 def _duplicate_key(candidate: ExtractedClaim) -> DuplicateKey:

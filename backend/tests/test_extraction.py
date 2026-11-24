@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import pytest
 from pydantic import ValidationError
 
@@ -298,6 +300,63 @@ def test_excerpt_is_kept_verbatim() -> None:
     assert result.claims[0].original_excerpt == excerpt
 
 
+WRAPPED_SOURCE = "Start at the Lello Bookshop. Entry requires a ticket bought\nonline in advance."
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        WRAPPED_SOURCE,
+        WRAPPED_SOURCE.replace("bought\n", "bought\r\n"),
+        WRAPPED_SOURCE.replace("bought\n", "bought \n  "),
+        WRAPPED_SOURCE.replace("bought\n", "bought\t"),
+    ],
+    ids=["line_break", "crlf", "spaces_around_break", "tab"],
+)
+def test_excerpt_matches_across_source_whitespace(source: str) -> None:
+    candidate = make_extracted(
+        place_name="Lello Bookshop",
+        claim_type="reservation",
+        original_excerpt="Entry requires a ticket bought online in advance",
+        normalized_statement="Lello Bookshop requires a ticket bought online in advance.",
+    )
+
+    result = process_extracted_claims(source, ExtractedClaims(claims=[candidate]))
+
+    assert result.skipped == []
+    # The stored excerpt is the source span, so it is still an exact substring.
+    [claim] = result.claims
+    assert claim.original_excerpt in source
+    assert claim.original_excerpt.startswith("Entry requires a ticket bought")
+    assert claim.original_excerpt.endswith("online in advance")
+
+
+def test_excerpt_whitespace_runs_in_the_llm_output_also_match() -> None:
+    candidate = make_extracted(original_excerpt="The museum  is\nopen every Monday.")
+
+    [claim] = process(candidate).claims
+
+    assert claim.original_excerpt == "The museum is open every Monday."
+
+
+@pytest.mark.parametrize(
+    "excerpt",
+    [
+        "Entry requires a ticket bought online in  advance!",  # punctuation differs
+        "Entry requires a ticket purchased online in advance",  # word differs
+        "entry requires a ticket bought online in advance",  # case differs
+        "Entry requires a ticket boughtonline in advance",  # whitespace removed
+        "Entry requires a ticket bou ght online in advance",  # whitespace added in a word
+    ],
+)
+def test_whitespace_tolerance_does_not_relax_content(excerpt: str) -> None:
+    candidate = make_extracted(original_excerpt=excerpt)
+
+    result = process_extracted_claims(WRAPPED_SOURCE, ExtractedClaims(claims=[candidate]))
+
+    assert result.skipped == [SkippedClaim(claim=candidate, reason="excerpt_not_found")]
+
+
 @pytest.mark.parametrize("place_name", [None, "", "   ", "\t\n"])
 def test_missing_place_is_skipped(place_name: str | None) -> None:
     candidate = make_extracted(place_name=place_name)
@@ -456,3 +515,55 @@ def test_fake_llm_response_flows_through_post_processing() -> None:
     ]
     # AC-04 and AC-06: the one-time visit and the ticket price are not claims.
     assert [s.reason for s in result.skipped] == ["observation", "unsupported_type"]
+
+
+# Regression: real DeepSeek output for tests/fixtures/porto_guide.txt (M2.3 smoke test),
+# where three excerpts span hard line breaks of the guide.
+PORTO_GUIDE = Path(__file__).parent / "fixtures" / "porto_guide.txt"
+PORTO_CANDIDATES = [
+    ("Lello Bookshop", "reservation", "policy", "Entry requires a ticket bought online in advance"),
+    ("Lello Bookshop", "opening_hours", "policy", "the bookshop opens at 9am every day"),
+    ("Torre dos Clérigos", "opening_hours", "policy", "The tower is open daily from 9am to 7pm."),
+    (
+        "Majestic Café",
+        "reservation",
+        "policy",
+        "the Majestic Café on Rua de Santa Catarina accepts reservations for groups only",
+    ),
+    ("Majestic Café", "closure", "policy", "It is closed on Sundays."),
+    (
+        "Lello Bookshop",
+        "unsupported",
+        "observation",
+        "We queued for twenty minutes at the bookshop on a Saturday morning.",
+    ),
+]
+
+
+def test_porto_guide_claims_pass_post_processing() -> None:
+    source = PORTO_GUIDE.read_text(encoding="utf-8")
+    extracted = ExtractedClaims(
+        claims=[
+            make_extracted(
+                place_name=place,
+                claim_type=claim_type,
+                assertion_kind=kind,
+                original_excerpt=excerpt,
+                normalized_statement=f"{place}: {excerpt}",
+            )
+            for place, claim_type, kind, excerpt in PORTO_CANDIDATES
+        ]
+    )
+
+    result = process_extracted_claims(source, extracted)
+
+    assert [(c.place_name, c.claim_type) for c in result.claims] == [
+        ("Lello Bookshop", "reservation"),
+        ("Lello Bookshop", "opening_hours"),
+        ("Torre dos Clérigos", "opening_hours"),
+        ("Majestic Café", "reservation"),
+        ("Majestic Café", "closure"),
+    ]
+    assert all(c.original_excerpt in source for c in result.claims)
+    assert [s.reason for s in result.skipped] == ["unsupported_type"]
+    assert result.skipped[0].claim.original_excerpt.startswith("We queued")
