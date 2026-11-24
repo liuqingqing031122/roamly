@@ -36,7 +36,7 @@ The user review step is a natural pause between HTTP requests; state is persiste
 | LLM | DeepSeek initially, behind `LLMClient`; called with httpx (no SDK) | Implemented (M1.3) | See §7 and decision D-006 |
 | Persistence | SQLite | Planned (M2+) | Zero-ops; sufficient for traceability requirements |
 | HTML fetch / extraction | httpx, trafilatura | Planned (M5) | Timeouts, streaming size limits, manual redirect handling for SSRF safety |
-| Place lookup | OpenStreetMap Nominatim (fixtures first) | Planned (M2) | Free; paid alternatives remain an option |
+| Place lookup | OpenStreetMap Nominatim, behind the `PlaceSearch` protocol | Implemented (M2.2) | Free public instance with a strict usage policy; paid alternatives remain an option |
 | Web search | To be decided | Planned (M5) | Open question |
 | Frontend | To be decided (Jinja2 + HTMX or React) | Planned (M5) | Open question; the API comes first |
 
@@ -56,6 +56,7 @@ backend/
     pipeline.py           # Orchestration: prompt → LLM or cache → post-processing
     cli.py                # `roamly-extract` command
     places.py             # M2.1: place resolution schemas, PlaceSearch protocol, resolver
+    places_nominatim.py   # M2.2: Nominatim adapter for PlaceSearch (rate limit, disk cache)
     evaluation/
       dataset.py          # Load and validate labelled datasets (read-only)
       runner.py           # Run the extraction pipeline over every case
@@ -73,7 +74,6 @@ Planned additions, introduced only when a milestone needs them:
 
 ```
   src/roamly/
-    places_nominatim.py  # M2.2: Nominatim adapter for PlaceSearch
     selection.py   # M2: deterministic claim preselection
     retrieval/     # M3: evidence providers, chunking, ranking
     verification/  # M4: evidence assessment, citation checks, verdict aggregation
@@ -109,6 +109,7 @@ Planned additions, introduced only when a milestone needs them:
 - `PlaceCandidate`: one provider-neutral search result (`provider`, `provider_id`, `name`, `display_name`, coordinates, administrative `areas`, optional `category` and `website`).
 - `PlaceResolution`: one per distinct normalized place name, linked to its claims through `claim_ids`. `status` is `resolved`, `ambiguous`, or `unresolved`, with a `reason`; `place` is set only when resolved; all search `candidates` are kept for manual confirmation.
 - `resolve_places(extraction, destination, search)` makes one search per distinct place name. A place is resolved only when exactly one candidate has the same normalized name and lies in the user-provided destination (every comma-separated destination part equals one of the candidate's areas). Partial or missing area information needs confirmation; candidates clearly elsewhere are never chosen. A `PlaceSearchError` makes only that place `unresolved` (`lookup_failed`).
+- `NominatimSearch` (`places_nominatim.py`, M2.2) implements `PlaceSearch` with the Nominatim Search API (`format=jsonv2`, `addressdetails=1`, `extratags=1`, `accept-language=en`). It follows the public usage policy: an identifying User-Agent is required (`ROAMLY_NOMINATIM_USER_AGENT`), requests are spaced by at least one second per instance, successful responses (including empty ones) are cached on disk under `.roamly_cache/places/` without expiry, and the base URL is configurable (`ROAMLY_NOMINATIM_URL`). `areas` come from the address levels `suburb` to `country`; `provider_id` is `osm_type/osm_id`. Timeouts, transport errors, non-200 responses, and malformed responses raise `PlaceSearchError`; other exceptions propagate. Output that shows place data must credit © OpenStreetMap contributors (ODbL).
 - `Claim` is unchanged; resolutions refer to claims by ID. Only resolved or user-confirmed places proceed to evidence retrieval.
 
 ### Planned for later milestones
@@ -213,6 +214,7 @@ Fake clients by default in tests, an on-disk response cache, at most three verif
 | D-010 | 2026-11-18 | Evaluation runner reuses `extract_claims` unchanged and stores predictions as versioned run files separate from scoring; token usage is recorded by wrapping the `LLMClient` | One extraction path for production and evaluation; scoring can be iterated without new API calls; the pipeline needs no evaluation-specific changes |
 | D-011 | 2026-11-19 | Claim matching is deterministic and separate from scoring: excerpt overlap is required, statement similarity decides, type and scope differences do not block a match, and uncertain or merged pairs go to `needs_review` instead of being guessed. Annotation guidelines 1.1 define this as detection matching and keep the 1.0 same-type rule as strict extraction scoring. Human review decisions will be stored in separate review files | Keeps detection metrics independent of field errors (a wrong type is a quality error, not a missed claim) while preserving the stricter view; uncertain cases are surfaced for human review rather than silently counted as true or false positives; thresholds are initial heuristics, so the matcher is versioned |
 | D-012 | 2026-11-24 | Place resolution (M2.1) is deterministic and conservative: exact match on normalized names, a user-provided destination checked against the candidate's administrative areas, one search per distinct place name, and `resolved` only for a single same-name candidate confirmed inside the destination; everything else is `ambiguous` or `unresolved` with all candidates kept. Search providers sit behind a `PlaceSearch` protocol | A wrong place silently invalidates every later verdict, so uncertainty is surfaced for confirmation instead of guessed; the area check needs no extra API call and is easy to test; Nominatim (M2.2) or a paid provider can be plugged in without changing the resolver |
+| D-013 | 2026-11-24 | Use the public Nominatim instance through `NominatimSearch`, with a per-instance one-second request interval, a disk cache of raw responses keyed by base URL and all query parameters, and no automatic retries | Free and sufficient for the few place names in one guide; caching and rate limiting are required by the usage policy; storing raw responses lets mapping fixes apply to cached entries; failed lookups are not cached, so re-running retries them |
 
 ## 13. Open questions
 

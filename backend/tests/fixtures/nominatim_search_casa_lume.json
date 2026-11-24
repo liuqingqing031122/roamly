@@ -1,0 +1,86 @@
+[
+  {
+    "place_id": 101,
+    "licence": "Data © OpenStreetMap contributors, ODbL 1.0. http://osm.org/copyright",
+    "osm_type": "node",
+    "osm_id": 4242424242,
+    "lat": "41.1496100",
+    "lon": "-8.6109900",
+    "category": "amenity",
+    "type": "cafe",
+    "place_rank": 30,
+    "importance": 0.00008,
+    "addresstype": "amenity",
+    "name": "Casa Lume",
+    "display_name": "Casa Lume, 12, Rua das Flores, Cedofeita, Porto, North, 4050-262, Portugal",
+    "address": {
+      "amenity": "Casa Lume",
+      "house_number": "12",
+      "road": "Rua das Flores",
+      "neighbourhood": "Vitória",
+      "suburb": "Cedofeita",
+      "city": "Porto",
+      "county": "Porto",
+      "ISO3166-2-lvl6": "PT-13",
+      "state": "North",
+      "ISO3166-2-lvl4": "PT-11",
+      "postcode": "4050-262",
+      "country": "Portugal",
+      "country_code": "pt"
+    },
+    "extratags": {
+      "website": "https://casalume.example.pt",
+      "opening_hours": "Mo-Su 09:00-19:00"
+    },
+    "boundingbox": ["41.1495600", "41.1496600", "-8.6110400", "-8.6109400"]
+  },
+  {
+    "place_id": 102,
+    "licence": "Data © OpenStreetMap contributors, ODbL 1.0. http://osm.org/copyright",
+    "osm_type": "way",
+    "osm_id": 777777,
+    "lat": "41.2589000",
+    "lon": "-8.7183000",
+    "category": "amenity",
+    "type": "restaurant",
+    "place_rank": 30,
+    "importance": 0.00005,
+    "addresstype": "amenity",
+    "name": "Casa Lume",
+    "display_name": "Casa Lume, Rua do Mar, Lavra, Matosinhos, Porto, North, Portugal",
+    "address": {
+      "amenity": "Casa Lume",
+      "road": "Rua do Mar",
+      "village": "Lavra",
+      "municipality": "Matosinhos",
+      "county": "Porto",
+      "state": "North",
+      "country": "Portugal",
+      "country_code": "pt"
+    },
+    "extratags": {
+      "contact:website": "https://lume-lavra.example.pt"
+    },
+    "boundingbox": ["41.2588000", "41.2590000", "-8.7184000", "-8.7182000"]
+  },
+  {
+    "place_id": 103,
+    "licence": "Data © OpenStreetMap contributors, ODbL 1.0. http://osm.org/copyright",
+    "lat": "41.1500000",
+    "lon": "-8.6100000",
+    "category": "place",
+    "type": "postcode",
+    "place_rank": 21,
+    "importance": 0.00001,
+    "addresstype": "postcode",
+    "name": "",
+    "display_name": "4050-262, Porto, Portugal",
+    "address": {
+      "postcode": "4050-262",
+      "city": "Porto",
+      "country": "Portugal",
+      "country_code": "pt"
+    },
+    "boundingbox": ["41.1400000", "41.1600000", "-8.6200000", "-8.6000000"]
+  }
+]
