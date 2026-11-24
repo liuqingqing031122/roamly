@@ -25,3 +25,6 @@ dist/
 
 # Local evaluation run outputs (baselines are stored separately)
 eval_runs/
+
+# Local outputs of manual CLI runs (extraction and place resolution)
+.roamly_runs/

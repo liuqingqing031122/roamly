@@ -57,6 +57,7 @@ backend/
     cli.py                # `roamly-extract` command
     places.py             # M2.1: place resolution schemas, PlaceSearch protocol, resolver
     places_nominatim.py   # M2.2: Nominatim adapter for PlaceSearch (rate limit, disk cache)
+    places_cli.py         # M2.3: `roamly-resolve` command
     evaluation/
       dataset.py          # Load and validate labelled datasets (read-only)
       runner.py           # Run the extraction pipeline over every case
@@ -110,6 +111,7 @@ Planned additions, introduced only when a milestone needs them:
 - `PlaceResolution`: one per distinct normalized place name, linked to its claims through `claim_ids`. `status` is `resolved`, `ambiguous`, or `unresolved`, with a `reason`; `place` is set only when resolved; all search `candidates` are kept for manual confirmation.
 - `resolve_places(extraction, destination, search)` makes one search per distinct place name. A place is resolved only when exactly one candidate has the same normalized name and lies in the user-provided destination (every comma-separated destination part equals one of the candidate's areas). Partial or missing area information needs confirmation; candidates clearly elsewhere are never chosen. A `PlaceSearchError` makes only that place `unresolved` (`lookup_failed`).
 - `NominatimSearch` (`places_nominatim.py`, M2.2) implements `PlaceSearch` with the Nominatim Search API (`format=jsonv2`, `addressdetails=1`, `extratags=1`, `accept-language=en`). It follows the public usage policy: an identifying User-Agent is required (`ROAMLY_NOMINATIM_USER_AGENT`), requests are spaced by at least one second per instance, successful responses (including empty ones) are cached on disk under `.roamly_cache/places/` without expiry, and the base URL is configurable (`ROAMLY_NOMINATIM_URL`). `areas` come from the address levels `suburb` to `country`; `provider_id` is `osm_type/osm_id`. Timeouts, transport errors, non-200 responses, and malformed responses raise `PlaceSearchError`; other exceptions propagate. Output that shows place data must credit © OpenStreetMap contributors (ODbL).
+- `roamly-resolve` (`places_cli.py`, M2.3) reads the JSON printed by `roamly-extract`, resolves its places with `NominatimSearch`, prints one block per place (status, reason, claims, every candidate with its address and area check), and with `--output` saves a `PlaceResolutionFile` (format version, destination, the full `ExtractionResult`, resolutions, OSM attribution) as the self-contained input for evidence retrieval. Exit code 2 means at least one lookup failed; re-running retries only those, since successful lookups are cached.
 - `Claim` is unchanged; resolutions refer to claims by ID. Only resolved or user-confirmed places proceed to evidence retrieval.
 
 ### Planned for later milestones
@@ -121,7 +123,7 @@ User confirmation of ambiguous places, `TravelSource`, `Analysis` (a check sessi
 | Step | LLM | Deterministic Python |
 | --- | --- | --- |
 | URL validation, fetching, content extraction | | ✓ |
-| Claim and place extraction; policy vs observation | ✓ | Excerpt substring check, type filtering, missing-place check, de-duplication, ID assignment |
+| Claim and place extraction; policy vs observation | ✓ | Excerpt substring check (runs of whitespace are equivalent), type filtering, missing-place check, de-duplication, ID assignment |
 | Place resolution | Optional disambiguation | ✓ candidate lookup and ambiguity detection |
 | Preselection of at most three claims | | ✓ closure > reservation > opening hours, then source order |
 | Query construction, retrieval, ranking | | ✓ |
@@ -215,6 +217,8 @@ Fake clients by default in tests, an on-disk response cache, at most three verif
 | D-011 | 2026-11-19 | Claim matching is deterministic and separate from scoring: excerpt overlap is required, statement similarity decides, type and scope differences do not block a match, and uncertain or merged pairs go to `needs_review` instead of being guessed. Annotation guidelines 1.1 define this as detection matching and keep the 1.0 same-type rule as strict extraction scoring. Human review decisions will be stored in separate review files | Keeps detection metrics independent of field errors (a wrong type is a quality error, not a missed claim) while preserving the stricter view; uncertain cases are surfaced for human review rather than silently counted as true or false positives; thresholds are initial heuristics, so the matcher is versioned |
 | D-012 | 2026-11-24 | Place resolution (M2.1) is deterministic and conservative: exact match on normalized names, a user-provided destination checked against the candidate's administrative areas, one search per distinct place name, and `resolved` only for a single same-name candidate confirmed inside the destination; everything else is `ambiguous` or `unresolved` with all candidates kept. Search providers sit behind a `PlaceSearch` protocol | A wrong place silently invalidates every later verdict, so uncertainty is surfaced for confirmation instead of guessed; the area check needs no extra API call and is easy to test; Nominatim (M2.2) or a paid provider can be plugged in without changing the resolver |
 | D-013 | 2026-11-24 | Use the public Nominatim instance through `NominatimSearch`, with a per-instance one-second request interval, a disk cache of raw responses keyed by base URL and all query parameters, and no automatic retries | Free and sufficient for the few place names in one guide; caching and rate limiting are required by the usage policy; storing raw responses lets mapping fixes apply to cached entries; failed lookups are not cached, so re-running retries them |
+| D-014 | 2026-11-24 | Keep extraction and place resolution as two commands joined by a file (`roamly-extract guide.txt > extraction.json`, then `roamly-resolve extraction.json`); the resolution file embeds the extraction result | No change to the M1 CLI; resolution can be re-run with another destination without new LLM calls; later steps need only one file |
+| D-015 | 2026-11-24 | Excerpt validation treats any run of whitespace (spaces, line breaks, tabs) as equal to any other; everything else must match exactly. An accepted claim stores the matching source span as `original_excerpt` | Guides wrap lines, and the LLM joins them with spaces, so exact matching rejected correct excerpts (3 of 5 claims in the Porto smoke test). Storing the source span keeps every `Claim` excerpt an exact substring of the source, which evaluation matching and citation display rely on |
 
 ## 13. Open questions
 

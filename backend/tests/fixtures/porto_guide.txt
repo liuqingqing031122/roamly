@@ -1,0 +1,15 @@
+Two Days in Porto (sample guide for manual testing)
+
+Note: written to exercise claim extraction and place resolution. The statements
+below have not been fact-checked and may be out of date.
+
+Start at the Lello Bookshop near the university. Entry requires a ticket bought
+online in advance, and the bookshop opens at 9am every day.
+
+Climb the Torre dos Clérigos for the best view of the old town. The tower is open
+daily from 9am to 7pm.
+
+For a break, the Majestic Café on Rua de Santa Catarina accepts reservations for
+groups only. It is closed on Sundays.
+
+We queued for twenty minutes at the bookshop on a Saturday morning.

@@ -146,10 +146,10 @@ def resolve_places(
         groups.setdefault(key, []).append(claim.id)
         first_names.setdefault(key, claim.place_name.strip())
 
-    destination_parts = _destination_parts(destination)
-    search_destination = destination.strip() if destination_parts else None
+    parts = destination_parts(destination)
+    search_destination = destination.strip() if destination and parts else None
     return [
-        _resolve_one(first_names[key], claim_ids, search_destination, destination_parts, search)
+        _resolve_one(first_names[key], claim_ids, search_destination, parts, search)
         for key, claim_ids in groups.items()
     ]
 
@@ -214,7 +214,8 @@ def area_check(candidate: PlaceCandidate, destination_parts: Sequence[str]) -> A
     return "unknown"
 
 
-def _destination_parts(destination: str | None) -> list[str]:
+def destination_parts(destination: str | None) -> list[str]:
+    """The normalized comma-separated parts of a destination, e.g. ["porto", "portugal"]."""
     if destination is None:
         return []
     return [part for part in (normalize_name(p) for p in destination.split(",")) if part]

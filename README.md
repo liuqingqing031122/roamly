@@ -65,4 +65,29 @@ No framework is adopted solely for the sake of using it. See [Architecture](docs
 
 ## Local setup
 
-Not available yet; instructions will be added with the first runnable implementation.
+Requires [uv](https://docs.astral.sh/uv/). Run the commands from `backend/`.
+
+```bash
+uv sync
+uv run pytest
+```
+
+The current command-line flow covers claim extraction and place resolution; evidence retrieval and verification are not implemented yet.
+
+1. Extract claims (calls the LLM; set `ROAMLY_LLM_API_KEY`, never commit it). The result is printed as JSON; local run outputs go to the git-ignored `.roamly_runs/`:
+
+   ```bash
+   mkdir -p .roamly_runs
+   uv run roamly-extract tests/fixtures/porto_guide.txt > .roamly_runs/extraction.json
+   ```
+
+2. Resolve the places of those claims with OpenStreetMap Nominatim. The public instance requires a User-Agent that identifies the application, allows at most one request per second, and requires caching ([usage policy](https://operations.osmfoundation.org/policies/nominatim/)); lookups are cached in `.roamly_cache/places/`.
+
+   ```bash
+   export ROAMLY_NOMINATIM_USER_AGENT="roamly-dev/0.1 (<your contact>)"
+   uv run roamly-resolve .roamly_runs/extraction.json --destination "Porto, Portugal" --output .roamly_runs/places.json
+   ```
+
+   Each place is `resolved`, `ambiguous` (several candidates; a person must choose), or `unresolved`. Nothing is resolved without `--destination`. Place data © OpenStreetMap contributors (ODbL).
+
+`tests/fixtures/porto_guide.txt` is a short sample guide with real Porto places for manual testing; its statements have not been fact-checked.
