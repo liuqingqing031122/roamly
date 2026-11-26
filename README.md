@@ -99,4 +99,12 @@ The current command-line flow covers claim extraction and place resolution; evid
 
    Manually confirmed places are `resolved` with reason `manually_confirmed`.
 
+4. Fetch the official website (home page only) of each resolved place. robots.txt is respected; set `ROAMLY_FETCH_USER_AGENT` to identify yourself (default `Roamly/0.1 ...`). A fetched page is raw material for evidence, not a verified claim:
+
+   ```bash
+   uv run roamly-fetch .roamly_runs/places.confirmed.json --output .roamly_runs/pages.json
+   ```
+
+   Pages are cached in `.roamly_cache/pages/`; use `--refresh` to download again or `--no-cache` to bypass the cache. Do not point the fetcher at arbitrary user-supplied URLs: DNS rebinding is not yet prevented (see the architecture document, §9).
+
 `tests/fixtures/porto_guide.txt` is a short sample guide with real Porto places for manual testing; its statements have not been fact-checked.
