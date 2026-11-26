@@ -16,6 +16,7 @@ roamly-eval = "roamly.evaluation.cli:main"
 roamly-resolve = "roamly.places_cli:main"
 roamly-confirm = "roamly.places_confirm:main"
 roamly-fetch = "roamly.web_fetch_cli:main"
+roamly-extract-evidence = "roamly.evidence_cli:main"
 
 [build-system]
 requires = ["hatchling"]

@@ -107,4 +107,10 @@ The current command-line flow covers claim extraction and place resolution; evid
 
    Pages are cached in `.roamly_cache/pages/`; use `--refresh` to download again or `--no-cache` to bypass the cache. Do not point the fetcher at arbitrary user-supplied URLs: DNS rebinding is not yet prevented (see the architecture document, §9).
 
+5. Extract evidence excerpts for each claim from the fetched pages (calls the LLM; cached in `.roamly_cache/evidence/`). Excerpts are copied verbatim from the website, in its language; they are candidate evidence, not a verdict:
+
+   ```bash
+   uv run roamly-extract-evidence .roamly_runs/pages.json --output .roamly_runs/evidence.json
+   ```
+
 `tests/fixtures/porto_guide.txt` is a short sample guide with real Porto places for manual testing; its statements have not been fact-checked.

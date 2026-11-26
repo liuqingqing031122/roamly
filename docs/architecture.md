@@ -61,6 +61,9 @@ backend/
     places_confirm.py     # M2.4: `roamly-confirm` interactive manual confirmation
     web_fetch.py          # M3.1: SourcePage schema, safe official-website fetching, cache
     web_fetch_cli.py      # M3.1: `roamly-fetch` command
+    evidence_prompt.py    # M3.2: versioned evidence extraction prompt
+    evidence.py           # M3.2: evidence schemas, chunking, validation, cache
+    evidence_cli.py       # M3.2: `roamly-extract-evidence` command
     evaluation/
       dataset.py          # Load and validate labelled datasets (read-only)
       runner.py           # Run the extraction pipeline over every case
@@ -127,6 +130,14 @@ Planned additions, introduced only when a milestone needs them:
 - The User-Agent is `Roamly/0.1 (...)` by default and can be set with `ROAMLY_FETCH_USER_AGENT`; its product token (the text before the first `/`) is what robots.txt groups are matched against.
 - `roamly-fetch` reads a place resolution file and saves a `SourcePageFile` (the place file plus the pages) with `--output`; `--no-cache` and `--refresh` bypass the cache (no TTL).
 - `domain.Evidence` (one excerpt for one claim) is unchanged; it is produced from these pages in M3.2.
+
+### Implemented in M3.2 (`backend/src/roamly/evidence.py`)
+
+- One LLM call per fetched page (prompt `evidence-v1`) receives all of that page's claims and the page text, each in delimiters, and returns `ExtractedEvidenceList` (`claim_id`, `excerpts`) — untrusted output. Pages longer than 30,000 characters are split on line boundaries into chunks with 1,000 characters of overlap, one call each, so no text is silently dropped.
+- Deterministic validation keeps an excerpt only if it occurs in the text that was sent (whitespace-equivalent, reusing `find_excerpt`; the stored excerpt is the page span), belongs to a claim of that page, is not a duplicate, and is within 5 per claim. Rejected output is listed as `EvidenceIssue` (`unknown_claim_id`, `excerpt_not_found`, `duplicate`, `too_many_excerpts`); nothing is repaired or replaced.
+- `ClaimEvidence` (one per claim) has `status` `found`, `none_found` (checked, nothing relevant or valid), `page_unavailable` (reason `no_page` or the page's own reason, e.g. `robots_disallowed`; no LLM call), or `failed` (`llm_error` or `missing_from_response`), plus `source_type`, `source_url` (final URL), `fetched_at`, and `evidence` as `domain.Evidence` records (unchanged model; `retrieved_at` is the page's download time). `found` means relevant passages exist, not that the claim is true.
+- `EvidenceCache` (`.roamly_cache/evidence/`) stores the validated LLM output keyed by prompt version and text, response schema, model settings, and the hash of the full user prompt (claims and chunk text); validation re-runs on every hit; LLM failures are not cached.
+- `roamly-extract-evidence` reads a pages file and saves an `EvidenceFile` (prompt version, model settings, the pages file, claim results, issues) with `--output`; the summary shows one-line excerpt previews, never full page text.
 
 ### Planned for later milestones
 
@@ -237,6 +248,7 @@ Fake clients by default in tests, an on-disk response cache, at most three verif
 | D-016 | 2026-11-24 | Record manual place confirmation in the existing `PlaceResolution`: a new reason `manually_confirmed` (status `resolved`) plus an optional `confirmation` field; confirmation is an interactive terminal menu that writes a new file | Additive and backward compatible (older files load unchanged); later steps treat both kinds of `resolved` alike but can always tell a person's choice from an automatic match; no UI, database, or session state is needed for the MVP |
 | D-017 | 2026-11-24 | Official websites are fetched by a dedicated `WebsiteFetcher` into page-level `SourcePage` records (separate from claim-level `Evidence`), with manual redirect handling and a public-address check per hop, standard-library text extraction, and a raw-HTML disk cache without expiry | Keeps retrieval outcomes (fetched, skipped, failed) apart from claim verification; manual redirects are the simplest way to apply the SSRF check to every hop; no new dependencies; caching raw HTML lets text-extraction fixes apply to cached pages |
 | D-018 | 2026-11-26 | Respect robots.txt with a minimal RFC 9309 matcher, conservatively (unretrievable robots.txt blocks the origin); make the fetch User-Agent configurable (`ROAMLY_FETCH_USER_AGENT`); do not fix DNS rebinding yet but document it as a residual SSRF risk with usage limits | Site owners' crawl rules are honoured without a crawler framework; the standard-library parser ignores wildcards, which could fetch disallowed pages; a rebinding fix needs private httpx internals or a custom transport, so it waits for an explicit decision |
+| D-019 | 2026-11-26 | Extract evidence with one LLM call per page (all its claims), validate excerpts deterministically against the page text, keep `domain.Evidence` unchanged and wrap it in a per-claim `ClaimEvidence` status, and cache raw LLM output per prompt hash | Fewer calls than one per claim; cross-language selection needs the LLM, but only verbatim page spans are accepted, so translations or invented text cannot become evidence; per-claim statuses keep "nothing found" separate from "LLM failed" and "no page"; validation changes apply to cached output |
 
 ## 13. Open questions
 
